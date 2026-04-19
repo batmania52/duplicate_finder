@@ -24,7 +24,7 @@ python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 # 의존성 설치
-pip install fastapi uvicorn imagehash Pillow cppbktree pybktree
+pip install -r requirements.txt
 
 # ffmpeg 설치 (영상 분석에 필요)
 brew install ffmpeg  # macOS
