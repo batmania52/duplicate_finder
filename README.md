@@ -54,6 +54,7 @@ python dup_web.py
 - 각 파일 행에서 **KEEP / REMOVE** 상태 토글 (클릭 또는 스페이스바)
 - 키보드 ↑↓ 로 파일 간 이동
 - 경로 필터로 특정 경로 일괄 KEEP/REMOVE
+- **열기 버튼**: Finder에서 파일 위치 표시 (macOS 전용)
 
 ### 저장 및 불러오기
 
