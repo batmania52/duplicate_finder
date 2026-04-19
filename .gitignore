@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.bkit/
+.claude/
+*.csv
+*.zip
+.pdca-state.json
+bak/
+docs/
