@@ -99,6 +99,103 @@ fn pick_folder_blocking() -> Option<String> {
     None
 }
 
+#[derive(Deserialize)]
+pub struct SavePresetRequest {
+    pub data: serde_json::Value,
+}
+
+pub async fn api_save_preset(
+    Json(body): Json<SavePresetRequest>,
+) -> Json<serde_json::Value> {
+    let result = tokio::task::spawn_blocking(move || {
+        pick_save_path_blocking().map(|path| {
+            std::fs::write(&path, body.data.to_string()).ok()?;
+            Some(path)
+        }).flatten()
+    }).await;
+    match result.ok().flatten() {
+        Some(path) => Json(serde_json::json!({ "ok": true, "path": path })),
+        None => Json(serde_json::json!({ "ok": false })),
+    }
+}
+
+pub async fn api_load_preset() -> Json<serde_json::Value> {
+    let result = tokio::task::spawn_blocking(|| {
+        pick_open_path_blocking().and_then(|path| {
+            let content = std::fs::read_to_string(&path).ok()?;
+            let data: serde_json::Value = serde_json::from_str(&content).ok()?;
+            Some(data)
+        })
+    }).await;
+    match result.ok().flatten() {
+        Some(data) => Json(serde_json::json!({ "ok": true, "data": data })),
+        None => Json(serde_json::json!({ "ok": false })),
+    }
+}
+
+fn pick_save_path_blocking() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose file name with prompt \"프리셋 저장\" default name \"presets.json\")"])
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command",
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
+                 $f = New-Object System.Windows.Forms.SaveFileDialog; \
+                 $f.FileName = 'presets.json'; \
+                 $f.Filter = 'JSON|*.json|All|*.*'; \
+                 $f.ShowDialog() | Out-Null; $f.FileName"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+    None
+}
+
+fn pick_open_path_blocking() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose file with prompt \"프리셋 불러오기\" of type {\"json\"})"])
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command",
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
+                 $f = New-Object System.Windows.Forms.OpenFileDialog; \
+                 $f.Filter = 'JSON|*.json|All|*.*'; \
+                 $f.ShowDialog() | Out-Null; $f.FileName"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+    None
+}
+
 pub async fn api_file(
     Query(q): Query<FileQuery>,
 ) -> impl IntoResponse {
