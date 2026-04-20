@@ -21,7 +21,19 @@ pub fn collect_files(paths: &[String], exclude_patterns: &[String]) -> anyhow::R
     let mut files = Vec::new();
 
     for root in paths {
-        for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
+        let walker = WalkDir::new(root).follow_links(false).into_iter();
+        let mut iter = walker.filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            // 디렉토리명이 제외 패턴에 해당하면 하위 전체 스킵
+            if e.file_type().is_dir() {
+                let path_str = e.path().to_string_lossy();
+                return !exclude_set.is_match(name.as_ref())
+                    && !exclude_set.is_match(path_str.as_ref());
+            }
+            true
+        });
+        while let Some(entry) = iter.next() {
+            let entry = match entry { Ok(e) => e, Err(_) => continue };
             if !entry.file_type().is_file() {
                 continue;
             }
