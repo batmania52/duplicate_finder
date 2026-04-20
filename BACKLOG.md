@@ -50,6 +50,10 @@
 
 ## 추후 구현
 
+- [ ] 스캔 진행률 게이지 — SSE(Server-Sent Events) 또는 WebSocket으로 폴링 제거. 텍스트 로그 대신 단계별 프로그레스 바로 표시. Windows WebView2 폴링 스로틀링 문제 근본 해결
+
+
+
 - [x] Tauri + Rust 완전 포팅 — Python 백엔드를 Rust로 재작성 (Axum or Actix-web), ffmpeg-next 정적 링크로 외부 의존성 제거, 단일 바이너리 배포. fetch → invoke 전환
 - [ ] pHash 버킷 분류 후 BK-tree 적용 — pHash 상위 비트로 버킷 분류 → 버킷별 소규모 BK-tree 구성으로 모수 축소. 인접 버킷 교차 비교 처리 필요. 대규모 이미지 스캔 성능 개선 목적
 - [ ] 부분 해시 기반 사전 필터링 — 앞 N KB + 뒤 N KB 해시로 1·2단계 후보군 축소 후 전체 해시(3단계) 확인. 사용자 옵션(`--partial-hash 64`)으로 노출하거나 full hash 스캔의 사전 작업으로 자동 적용. 대용량 파일·압축파일 스캔 I/O 대폭 절감 목적
