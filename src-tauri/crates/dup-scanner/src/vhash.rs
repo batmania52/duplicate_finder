@@ -122,15 +122,26 @@ pub fn find_similar_videos(
     n_frames: u32,
     exact_threshold: f32,
     similar_threshold: f32,
+    log_tx: Option<&crate::LogSender>,
 ) -> Vec<Group> {
     if files.is_empty() {
         return Vec::new();
     }
 
+    let total = files.len();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     let hashed: Vec<(Vec<u64>, &std::path::PathBuf)> = files
         .par_iter()
         .filter_map(|p| {
-            extract_frame_hashes(p, n_frames).ok().map(|h| (h, p))
+            let result = extract_frame_hashes(p, n_frames).ok().map(|h| (h, p));
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if let Some(tx) = log_tx {
+                if n % 10 == 0 || n == total {
+                    let _ = tx.send(format!("\r영상 유사도 분석 중... ({} / {})", n, total));
+                }
+            }
+            result
         })
         .filter(|(h, _)| !h.is_empty())
         .collect();

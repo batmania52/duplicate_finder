@@ -131,11 +131,24 @@ pub fn find_similar_images(
     files: &[std::path::PathBuf],
     exact_threshold: u32,
     similar_threshold: u32,
+    log_tx: Option<&crate::LogSender>,
 ) -> Vec<Group> {
+    let total = files.len();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     // 병렬 pHash 계산
     let hashed: Vec<(u64, &std::path::PathBuf)> = files
         .par_iter()
-        .filter_map(|p| compute_phash(p).map(|h| (h, p)))
+        .filter_map(|p| {
+            let result = compute_phash(p).map(|h| (h, p));
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if let Some(tx) = log_tx {
+                if n % 100 == 0 || n == total {
+                    let _ = tx.send(format!("\r이미지 유사도 분석 중... ({} / {})", n, total));
+                }
+            }
+            result
+        })
         .collect();
 
     if hashed.is_empty() {

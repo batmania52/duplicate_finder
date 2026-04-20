@@ -33,6 +33,7 @@ fn main() {
 
     let url = format!("http://127.0.0.1:{}/", port);
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
             let _ = window.navigate(url.parse().unwrap());

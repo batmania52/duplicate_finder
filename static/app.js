@@ -91,13 +91,18 @@ class VirtualScroller {
       const g = this.groups[i];
       const isOpen = this.expanded.has(g.id);
       const meta = buildMeta(g);
-      const filesHtml = isOpen ? g.files.map((f, fi) => renderFile(g.id, fi, f)).join('') : '';
+      const originIdx = getOriginIndex(g.files);
+      const filesHtml = isOpen ? g.files.map((f, fi) => renderFile(g.id, fi, f, fi === originIdx)).join('') : '';
+      const diffBtn = (currentTab === 'image')
+        ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
+        : '';
       html.push(`
         <div class="group" id="group-${g.id}" style="position:absolute;left:8px;right:8px;top:${this._offsets[i] - 8}px">
           <div class="group-header" onclick="vsToggleGroup('${g.id}')">
             <span class="group-id">${g.id}</span>
             <span class="group-meta">${meta}</span>
             <span class="group-savable">${g.savable_fmt}</span>
+            ${diffBtn}
             <span class="group-collapse">${isOpen ? '▴' : '▾'}</span>
           </div>
           <div class="group-body" id="body-${g.id}">${filesHtml}</div>
@@ -138,6 +143,7 @@ let activeScroller = null;
 document.addEventListener('DOMContentLoaded', () => {
   const bar = document.getElementById('type-filter-bar');
   if (bar) bar.style.display = 'flex';
+  initScanPath();
 });
 
 // ── 플랫폼 조회 ──
@@ -174,16 +180,15 @@ let platform = 'darwin';
     }
     if (data.log?.length) updateLog(data.log);
     if (data.paths?.length) {
-      document.getElementById('paths-input').value = data.paths.join('\n');
+      setScanPaths(data.paths);
     }
   } catch(e) {}
 })();
 
 // ── 스캔 ──
 async function startScan() {
-  const raw = document.getElementById('paths-input').value.trim();
-  if (!raw) { alert('경로를 입력하세요'); return; }
-  const paths = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  const paths = getScanPaths();
+  if (!paths.length) { alert('경로를 입력하세요'); return; }
 
   const btn = document.getElementById('scan-btn');
   btn.disabled = true;
@@ -230,6 +235,7 @@ async function pollStatus() {
         tabCache.invalidateAll();
         updateBadges();
         renderGroups();
+        buildStatsPanel(state);
         setStatus('스캔 완료');
         setHeaderStatus('완료');
       } else if (data.status === 'cancelled') {
@@ -252,13 +258,7 @@ async function cancelScan() {
   } catch(e) {}
 }
 
-function updateLog(lines) {
-  const el = document.getElementById('log-panel');
-  el.innerHTML = lines.map(l =>
-    `<div class="${l.includes('[오류]') ? 'err' : ''}">${escHtml(l)}</div>`
-  ).join('');
-  el.scrollTop = el.scrollHeight;
-}
+// updateLog는 progress.js에서 정의 (덮어쓰기 카운터 지원)
 
 // ── 탭 ──
 function switchTab(tab) {
@@ -272,6 +272,13 @@ function switchTab(tab) {
   );
   const typeFilterBar = document.getElementById('type-filter-bar');
   if (typeFilterBar) typeFilterBar.style.display = tab === 'regular' ? 'flex' : 'none';
+  const sharedOpt = document.getElementById('sort-shared-opt');
+  if (sharedOpt) sharedOpt.style.display = tab === 'archive' ? '' : 'none';
+  if (tab !== 'archive' && sortOrder === 'shared') {
+    sortOrder = 'none';
+    const sel = document.getElementById('sort-select');
+    if (sel) sel.value = 'none';
+  }
   // 탭 전환: 이전 스크롤러 이벤트 제거, 새 탭 캐시 확인
   const cached = tabCache.get(tab);
   if (cached) {
@@ -361,6 +368,8 @@ function filteredGroups() {
       const hasArc = g => g.files.some(isArchiveEntry) ? 1 : 0;
       return hasArc(b) - hasArc(a);
     });
+  } else if (sortOrder === 'shared') {
+    groups = [...groups].sort((a, b) => (b.shared || 0) - (a.shared || 0));
   }
   return groups;
 }
@@ -382,13 +391,18 @@ function applyTypeFilter(val) {
 
 function renderGroup(g) {
   const meta = buildMeta(g);
-  const filesHtml = g.files.map((f, fi) => renderFile(g.id, fi, f)).join('');
+  const originIdx = getOriginIndex(g.files);
+  const filesHtml = g.files.map((f, fi) => renderFile(g.id, fi, f, fi === originIdx)).join('');
+  const diffBtn = (currentTab === 'image')
+    ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
+    : '';
   return `
     <div class="group" id="group-${g.id}">
       <div class="group-header" onclick="toggleGroup('${g.id}')">
         <span class="group-id">${g.id}</span>
         <span class="group-meta">${meta}</span>
         <span class="group-savable">${g.savable_fmt}</span>
+        ${diffBtn}
         <span class="group-collapse">▾</span>
       </div>
       <div class="group-body" id="body-${g.id}">${filesHtml}</div>
@@ -406,7 +420,24 @@ function buildMeta(g) {
   return `${n}개${hash ? ' · ' + hash : ''}`;
 }
 
-function renderFile(gid, fi, f) {
+function getOriginIndex(files) {
+  if (!files || files.length === 0) return 0;
+  let minScore = Infinity, minIdx = 0;
+  files.forEach((f, i) => {
+    const score = getOriginScore(f.path);
+    if (score < minScore) { minScore = score; minIdx = i; }
+  });
+  return minIdx;
+}
+
+function getOriginScore(filePath) {
+  const depth = filePath.split('/').length;
+  const copyPattern = /copy|복사|\(\d+\)|_\d{8}|[ _-]copy\d*/i;
+  const nameScore = copyPattern.test(filePath) ? 10 : 0;
+  return depth + nameScore;
+}
+
+function renderFile(gid, fi, f, isOrigin) {
   const cls = f.keep === true ? 'keep' : (f.keep === false ? 'remove' : '');
   const parts = f.path.split('/');
   const name = parts.pop();
@@ -416,11 +447,12 @@ function renderFile(gid, fi, f) {
     if (f.shared) extra += ` · 공통 ${f.shared}개`;
     if (f.total_files) extra += ` · 내부 ${f.total_files}개`;
   }
+  const originBadge = isOrigin ? '<span class="origin-badge">원본 추정</span>' : '';
   return `
     <div class="file-row ${cls}" id="file-${gid}-${fi}" tabindex="0" onclick="toggleKeep('${gid}',${fi})" onkeydown="handleFileKey(event,'${gid}',${fi})">
       <div class="file-status"></div>
       <div class="file-info">
-        <div class="file-name" title="${escHtml(f.path)}">${escHtml(name)}</div>
+        <div class="file-name" title="${escHtml(f.path)}">${escHtml(name)}${originBadge}</div>
         <div class="file-path" title="${escHtml(dir)}">${escHtml(dir)}</div>
       </div>
       <span class="file-size">${f.size_fmt}${extra}</span>

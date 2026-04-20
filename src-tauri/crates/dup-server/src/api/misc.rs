@@ -1,4 +1,4 @@
-use axum::{extract::{State, Extension}, http::StatusCode, Json};
+use axum::{extract::{State, Extension, Query}, http::{StatusCode, header}, response::IntoResponse, Json};
 use serde::Deserialize;
 use crate::state::SharedState;
 
@@ -51,4 +51,30 @@ pub async fn api_reset(
     let mut st = state.lock().await;
     st.reset();
     Json(serde_json::json!({"ok": true}))
+}
+
+#[derive(Deserialize)]
+pub struct FileQuery {
+    pub path: String,
+}
+
+pub async fn api_file(
+    Query(q): Query<FileQuery>,
+) -> impl IntoResponse {
+    let path = std::path::Path::new(&q.path);
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+                bytes,
+            ).into_response()
+        }
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain".to_string())],
+            b"not found".to_vec(),
+        ).into_response(),
+    }
 }

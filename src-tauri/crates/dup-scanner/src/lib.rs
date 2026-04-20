@@ -52,7 +52,8 @@ pub async fn run_scan(
     let _ = log_tx.send(format!("해시 중복 탐지 중... ({} 파일)", regular_files.len()));
     let regular = {
         let files = regular_files.clone();
-        tokio::task::spawn_blocking(move || hash::find_duplicates(&files)).await?
+        let tx = log_tx.clone();
+        tokio::task::spawn_blocking(move || hash::find_duplicates(&files, Some(&tx))).await?
     };
     let _ = log_tx.send(format!("해시 중복 그룹: {}개", regular.len()));
 
@@ -65,8 +66,9 @@ pub async fn run_scan(
         let _ = log_tx.send(format!("이미지 유사도 분석 중... ({} 파일)", image_files.len()));
         let exact = options.phash_exact;
         let similar = options.phash_similar;
+        let tx = log_tx.clone();
         let result = tokio::task::spawn_blocking(move || {
-            phash::find_similar_images(&image_files, exact, similar)
+            phash::find_similar_images(&image_files, exact, similar, Some(&tx))
         }).await?;
         let _ = log_tx.send(format!("이미지 유사 그룹: {}개", result.len()));
         result
@@ -84,8 +86,9 @@ pub async fn run_scan(
         let n_frames = options.vhash_frames;
         let exact = options.vhash_exact;
         let similar = options.vhash_similar;
+        let tx = log_tx.clone();
         let result = tokio::task::spawn_blocking(move || {
-            vhash::find_similar_videos(&video_files, n_frames, exact, similar)
+            vhash::find_similar_videos(&video_files, n_frames, exact, similar, Some(&tx))
         }).await?;
         let _ = log_tx.send(format!("영상 유사 그룹: {}개", result.len()));
         result
@@ -97,8 +100,9 @@ pub async fn run_scan(
     let archive = if !options.no_archive && !archive_files.is_empty() {
         let _ = log_tx.send(format!("아카이브 중복 분석 중... ({} 파일)", archive_files.len()));
         let min_overlap = options.min_overlap;
+        let log_tx2 = log_tx.clone();
         let result = tokio::task::spawn_blocking(move || {
-            archive::find_archive_duplicates(&archive_files, min_overlap)
+            archive::find_archive_duplicates(&archive_files, min_overlap, Some(&log_tx2))
         }).await?;
         let _ = log_tx.send(format!("아카이브 중복 그룹: {}개", result.len()));
         result

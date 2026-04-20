@@ -85,17 +85,26 @@ obsidian append path="tasks-inbox.md" content="- [ ] [project/utils-project] 할
 
 ```
 utils-project/
-├── duplicate_finder.py        # 메인 스크립트 — 중복/유사 파일 탐지 CLI
-├── dup_web.py                 # FastAPI 웹 UI 서버 (uvicorn으로 실행)
+├── duplicate_finder.py        # 메인 스크립트 — 중복/유사 파일 탐지 CLI (레거시)
+├── dup_web.py                 # FastAPI 웹 UI 서버 (레거시, Python)
 ├── CLAUDE.md                  # 이 파일
 ├── AGENTS.md                  # Codex 환경용 에이전트 지침
 ├── BACKLOG.md                 # 기능 백로그
 ├── results.md                 # 성능 측정 결과 기록
 ├── .pdca-state.json           # 현재 PDCA 사이클 상태
 ├── static/
-│   ├── app.js                 # 웹 UI 프론트엔드 (VirtualScroller, TabCache 등)
+│   ├── app.js                 # 웹 UI 프론트엔드 (rust-embed로 바이너리 내장)
 │   ├── style.css              # 웹 UI 스타일 (라이트/다크 테마)
 │   └── delete-log/            # 삭제 이력 JSON (YYYY-MM-DD.json)
+├── src-tauri/                 # Tauri + Rust 앱 (메인)
+│   ├── Cargo.toml             # workspace 정의
+│   ├── tauri.conf.json        # macOS 빌드 설정
+│   ├── tauri.win.conf.json    # Windows 빌드 설정 (dlls/ 번들 포함)
+│   ├── src/main.rs            # Tauri 진입점 (자동 포트 선택, 서버 ready 신호)
+│   ├── crates/
+│   │   ├── dup-scanner/       # 스캔 로직 lib crate
+│   │   └── dup-server/        # Axum API 서버 bin+lib crate
+│   └── .cargo/config.toml    # FFMPEG_DIR 환경변수 (macOS)
 ├── docs/
 │   ├── 01-plan/features/      # Plan 문서
 │   ├── 02-design/features/    # Design 문서
@@ -105,6 +114,17 @@ utils-project/
 │   └── archive/YYYY-MM/       # 완료된 PDCA 사이클 아카이브
 └── *.csv                      # 스캔 결과 CSV (gitignore 대상)
 ```
+
+### Tauri 앱 빌드
+
+| OS | 명령어 |
+|----|--------|
+| macOS | `cd src-tauri && cargo tauri build --target aarch64-apple-darwin` |
+| Windows | `cd src-tauri && $env:RC="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe"` → `cargo tauri build --target x86_64-pc-windows-msvc --config tauri.win.conf.json` |
+
+**Windows 주의사항**:
+- `src-tauri/dlls/` 폴더에 ffmpeg DLL 7개 필요 (gitignore됨, 로컬에서 직접 복사)
+- `.cargo/config.toml`에 `FFMPEG_DIR` 경로 설정 필요 (로컬 전용, gitignore됨)
 
 ### duplicate_finder.py 주요 기능
 

@@ -35,7 +35,7 @@ fn file_created(path: &Path) -> Option<String> {
     Some(dt.format("%Y-%m-%dT%H:%M:%S").to_string())
 }
 
-pub fn find_duplicates(files: &[std::path::PathBuf]) -> Vec<Group> {
+pub fn find_duplicates(files: &[std::path::PathBuf], log_tx: Option<&crate::LogSender>) -> Vec<Group> {
     // 크기 기준 1차 필터 (같은 크기끼리만 해시)
     let mut by_size: HashMap<u64, Vec<&std::path::PathBuf>> = HashMap::new();
     for f in files {
@@ -51,10 +51,22 @@ pub fn find_duplicates(files: &[std::path::PathBuf]) -> Vec<Group> {
         .copied()
         .collect();
 
+    let total = candidates.len();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     // 병렬 해시 계산
     let hashed: Vec<(String, &std::path::PathBuf)> = candidates
         .par_iter()
-        .filter_map(|p| hash_file(p).map(|h| (h, *p)))
+        .filter_map(|p| {
+            let result = hash_file(p).map(|h| (h, *p));
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if let Some(tx) = log_tx {
+                if n % 200 == 0 || n == total {
+                    let _ = tx.send(format!("\r해시 중복 탐지 중... ({} / {})", n, total));
+                }
+            }
+            result
+        })
         .collect();
 
     // 해시 기준 그룹화

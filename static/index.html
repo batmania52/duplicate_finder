@@ -17,8 +17,9 @@
     <!-- 사이드바 -->
     <div id="sidebar">
       <div id="scan-panel">
-        <label>스캔 경로 (줄바꿈으로 여러 개)</label>
-        <textarea id="paths-input" placeholder="/Users/macbook/nas/Nas/Sub3&#10;/Users/macbook/nas/Movs"></textarea>
+        <label>스캔 경로</label>
+        <div id="path-rows"></div>
+        <button class="path-add-btn" onclick="addPathRow('')">+ 경로 추가</button>
         <div class="opt-row">
           <label><input type="checkbox" id="opt-no-phash"> 이미지 skip</label>
           <label><input type="checkbox" id="opt-no-vhash"> 영상 skip</label>
@@ -63,6 +64,7 @@
         </details>
         <div style="display:flex;gap:6px;margin-top:10px">
           <button id="scan-btn" onclick="startScan()" style="flex:1;margin-top:0">스캔 시작</button>
+          <button onclick="openPresetModal()" style="padding:7px 10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:var(--radius);font:inherit;cursor:pointer" title="프리셋 관리">☰</button>
           <button id="cancel-btn" onclick="cancelScan()" style="padding:7px 10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:var(--radius);font:inherit;cursor:pointer;display:none">중단</button>
         </div>
       </div>
@@ -86,6 +88,7 @@
           <option value="total">최대 파일 크기↓</option>
           <option value="count">파일 수↓</option>
           <option value="archive_first">아카이브 우선</option>
+          <option value="shared" id="sort-shared-opt" style="display:none">일치도↓</option>
         </select>
         <button class="filter-btn" onclick="bulkKeep()">필터 내 일괄 KEEP</button>
         <button class="filter-btn" onclick="bulkRemove()">필터 내 일괄 REMOVE</button>
@@ -97,6 +100,7 @@
         <button class="type-filter-btn" data-type="normal" onclick="applyTypeFilter('normal')">일반 파일만</button>
         <button class="type-filter-btn" data-type="archive" onclick="applyTypeFilter('archive')">아카이브 내부만</button>
       </div>
+      <div id="stats-panel" style="display:none"></div>
       <div id="groups-container-wrap"></div>
       <div id="action-bar">
         <div class="action-row">
@@ -117,6 +121,11 @@
     </div>
   </div>
 </div>
+<script src="/scan-path.js"></script>
+<script src="/progress.js"></script>
+<script src="/stats.js"></script>
+<script src="/preset.js"></script>
+<script src="/diff-view.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

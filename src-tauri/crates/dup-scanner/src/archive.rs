@@ -5,14 +5,20 @@ use std::path::Path;
 use crate::hash::hash_bytes;
 use crate::model::{FileEntry, Group, fmt_size};
 
+pub type LogSender = tokio::sync::mpsc::UnboundedSender<String>;
+
 pub fn find_archive_duplicates(
     files: &[std::path::PathBuf],
     min_overlap: u32,
+    log_tx: Option<&LogSender>,
 ) -> Vec<Group> {
-    // 아카이브별 엔트리 해시 목록 수집
+    let total = files.len();
     let mut archive_entries: Vec<(String, HashMap<String, u64>)> = Vec::new();
 
-    for path in files {
+    for (i, path) in files.iter().enumerate() {
+        if let Some(tx) = log_tx {
+            let _ = tx.send(format!("\r아카이브 분석 중... ({}/{})", i + 1, total));
+        }
         if let Some(entries) = extract_entries(path) {
             archive_entries.push((path.to_string_lossy().to_string(), entries));
         }
@@ -22,7 +28,6 @@ pub fn find_archive_duplicates(
         return Vec::new();
     }
 
-    // 아카이브 쌍별 공유 엔트리 수 계산
     let mut groups: Vec<Group> = Vec::new();
     let mut group_id = 1;
 
@@ -100,13 +105,11 @@ fn extract_zip(path: &Path) -> Option<HashMap<String, u64>> {
         let size = entry.size();
         if size == 0 { continue; }
 
-        // 소규모 파일만 해시, 대용량은 크기+이름으로 식별
         let hash = if size <= 1024 * 1024 {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf).ok()?;
             u64::from_str_radix(&hash_bytes(&buf)[..16], 16).unwrap_or(size)
         } else {
-            // 크기 기반 빠른 식별 (대용량)
             size ^ (name.len() as u64)
         };
         entries.insert(name, hash);
