@@ -1,136 +1,109 @@
-# duplicate_finder
+# Dup Finder
 
-NAS/로컬 디렉토리의 중복 및 유사 파일을 탐지하는 도구.  
-CLI와 웹 UI 두 가지 방식으로 사용할 수 있습니다.
+NAS / 로컬 디렉토리의 중복·유사 파일을 탐지하고 정리하는 데스크탑 앱.
 
-## 기능
+Tauri + Rust 백엔드, 웹 UI 프론트엔드로 구성된 크로스플랫폼 앱입니다.
 
-- **일반 파일 중복**: MD5 해시 기반 완전 일치 탐지
-- **이미지 유사도**: pHash 기반 유사 이미지 그룹화 (정확/유사 2단계 임계값)
-- **영상 유사도**: 프레임별 pHash 시퀀스 비교
-- **압축 파일 내부 검사**: ZIP/TAR 내 파일 해시 비교
-- **아카이브 겹침 탐지**: 여러 압축 파일 간 동일 콘텐츠 그룹화 (Union-Find)
-- **웹 UI**: 브라우저에서 스캔 → 결과 확인 → 삭제까지 올인원
+---
 
-## 설치
+## 주요 기능
 
-```bash
-# 저장소 클론
-git clone https://github.com/batmania52/duplicate_finder.git
-cd duplicate_finder
+| 기능 | 설명 |
+|------|------|
+| **해시 중복 탐지** | SHA-256으로 완전히 동일한 파일 그룹화 |
+| **이미지 유사도** | pHash 기반 유사 이미지 탐지 (exact / similar 2단계) |
+| **영상 유사도** | 프레임 샘플 해시로 유사 영상 탐지 |
+| **아카이브 분석** | ZIP / 7z 내부 파일이 겹치는 압축 파일 그룹화 |
+| **KEEP / REMOVE** | 파일별 유지·삭제 표시 후 일괄 실행 |
+| **세션 저장** | 작업 결과를 ZIP으로 저장하고 이어서 작업 |
+| **프리셋** | 자주 쓰는 경로·옵션 조합 저장 / 불러오기 |
+| **진행률 게이지** | 단계별 실시간 진행 상황 표시 |
 
-# 가상환경 생성 및 활성화
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+---
 
-# 의존성 설치
-pip install -r requirements.txt
+## 다운로드
 
-# ffmpeg 설치 (영상 분석에 필요)
-brew install ffmpeg  # macOS
-# apt install ffmpeg  # Ubuntu
-```
+[Releases](https://github.com/batmania52/duplicate_finder/releases) 페이지에서 최신 버전을 받으세요.
 
-> `cppbktree` 설치 실패 시 `pybktree`로 폴백됩니다. 영상 분석은 `ffmpeg`가 없으면 자동으로 건너뜁니다.
+| OS | 파일 |
+|----|------|
+| macOS (Apple Silicon) | `dup-finder_x.x.x_aarch64.dmg` |
+| Windows (x64) | `dup-finder_x.x.x_x64-setup.exe` |
 
-## 웹 UI 사용법
+---
 
-```bash
-source .venv/bin/activate
-python dup_web.py
-```
+## 사용법
 
-브라우저에서 `http://localhost:8765` 접속
+자세한 내용은 **[MANUAL.md](MANUAL.md)** 를 참고하세요.
 
-### 스캔
+### 빠른 시작
 
-1. 검사할 경로 입력 (여러 경로는 줄바꿈으로 구분)
-2. 고급 옵션에서 임계값 조정 (선택)
+1. 앱 실행
+2. 왼쪽 사이드바에서 스캔할 폴더 추가 (📁 아이콘 또는 **+ 경로 추가**)
 3. **스캔 시작** 클릭
+4. 결과 탭(일반 / 이미지 / 영상 / 아카이브)에서 파일 확인
+5. 삭제할 파일을 클릭해 **REMOVE** 표시
+6. **전체 REMOVE 삭제** 로 일괄 삭제
 
-### 결과 확인
+---
 
-- 탭: **일반 / 이미지 / 영상 / 아카이브**
-- 각 파일 행에서 **KEEP / REMOVE** 상태 토글 (클릭 또는 스페이스바)
-- 키보드 ↑↓ 로 파일 간 이동
-- 경로 필터로 특정 경로 일괄 KEEP/REMOVE
-- **열기 버튼**: Finder에서 파일 위치 표시 (macOS 전용)
+## 빌드
 
-### 저장 및 불러오기
+### 요구사항
 
-- **ZIP 저장**: 현재 4개 탭 전체 상태를 ZIP 파일로 저장
-- **ZIP 불러오기**: 저장된 ZIP 파일을 불러와 작업 재개
-  - 같은 스캔 세션(UUID)에서 생성된 ZIP만 로드 가능
-  - ZIP 파일을 임의로 수정하면 로드 시 경고 표시
+- Rust 1.75+
+- Node.js (Tauri CLI용)
+- ffmpeg (영상 분석)
+  - macOS: `brew install ffmpeg`
+  - Windows: [ffmpeg 공식 사이트](https://ffmpeg.org/download.html)에서 다운로드 후 `src-tauri/dlls/` 에 DLL 배치
 
-### 삭제
-
-- **파일 존재 확인**: 실제로 존재하지 않는 파일을 리스트에서 제거
-- **선택 삭제**: 현재 탭에서 REMOVE 상태인 파일 삭제 (필터 적용 중이면 필터 범위 내)
-- **전체 REMOVE 삭제**: 현재 탭 전체에서 REMOVE 상태인 파일 모두 삭제
-- 삭제 후 다른 탭에도 자동 반영
-
-### 고급 옵션
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| 이미지 skip | OFF | pHash 계산 건너뛰기 |
-| 이미지 정확 임계값 | 0 | 해밍 거리 ≤ 이 값이면 정확 중복 |
-| 이미지 유사 임계값 | 10 | 해밍 거리 ≤ 이 값이면 유사 이미지 |
-| 영상 skip | OFF | 영상 pHash 계산 건너뛰기 |
-| 영상 정확 임계값 | 0 | |
-| 영상 유사 임계값 | 10 | |
-| 영상 프레임 수 | 10 | 유사도 비교에 사용할 샘플 프레임 수 |
-| 아카이브 최소 겹침 | 5 | 겹치는 파일이 이 수 이상이어야 그룹화 |
-| 아카이브 최소 파일 수 | 0 | 압축 파일 내 파일 수 필터 (0=제한없음) |
-
-## CLI 사용법
+### macOS
 
 ```bash
-# 기본 스캔
-python duplicate_finder.py scan /Volumes/NAS/photos
-
-# 여러 경로 동시 스캔
-python duplicate_finder.py scan /Volumes/NAS/photos /Volumes/NAS/backup
-
-# 이미지 유사도 임계값 조정
-python duplicate_finder.py scan /Volumes/NAS/ --phash-exact 3 --phash-similar 15
-
-# 이미지 유사도 검사 끄기
-python duplicate_finder.py scan /Volumes/NAS/ --no-phash
-
-# 압축 파일 내부 검사 끄기
-python duplicate_finder.py scan /Volumes/NAS/ --no-archive
-
-# 아카이브 겹침 기준 변경
-python duplicate_finder.py scan /Volumes/NAS/ --min-overlap 5
-
-# 결과 CSV 파일명 지정
-python duplicate_finder.py scan /Volumes/NAS/ -o result.csv
-
-# CSV 기반 삭제 (dry-run)
-python duplicate_finder.py delete result.csv --dry-run
-
-# CSV 기반 실제 삭제
-python duplicate_finder.py delete result.csv
+cd src-tauri
+cargo tauri build --target aarch64-apple-darwin
 ```
+
+빌드 결과: `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`
+
+### Windows
+
+```powershell
+cd src-tauri
+$env:RC="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe"
+cargo tauri build --target x86_64-pc-windows-msvc --config tauri.win.conf.json
+```
+
+> `src-tauri/dlls/` 에 ffmpeg DLL 7개 필요 (gitignore됨, 로컬에서 직접 복사)  
+> `.cargo/config.toml` 에 `FFMPEG_DIR` 경로 설정 필요
+
+---
 
 ## 프로젝트 구조
 
 ```
-duplicate_finder/
-├── duplicate_finder.py   # 핵심 탐지 로직 및 CLI
-├── dup_web.py            # FastAPI 웹 UI 서버
-├── results.md            # 성능 측정 기록
-└── README.md
+utils-project/
+├── static/               # 웹 UI (HTML / JS / CSS)
+│   ├── index.html
+│   ├── app.js
+│   ├── progress.js       # 진행률 게이지
+│   ├── stats.js          # 통계 패널
+│   ├── preset.js         # 프리셋 관리
+│   ├── diff-view.js      # 이미지·영상 비교
+│   └── style.css
+├── src-tauri/
+│   ├── crates/
+│   │   ├── dup-scanner/  # 스캔 로직 (해시·pHash·vHash·아카이브)
+│   │   └── dup-server/   # Axum API 서버
+│   ├── src/main.rs       # Tauri 진입점
+│   └── tauri.conf.json
+├── MANUAL.md             # 사용자 매뉴얼
+└── BACKLOG.md            # 기능 백로그
 ```
 
-## 의존성
+---
 
-| 패키지 | 용도 | 필수 여부 |
-|--------|------|-----------|
-| `fastapi`, `uvicorn` | 웹 UI 서버 | 웹 UI 사용 시 |
-| `imagehash`, `Pillow` | 이미지/영상 pHash | 선택 |
-| `cppbktree` | BK-tree C++ 구현 (고속 유사도 탐색) | 선택 |
-| `pybktree` | cppbktree 폴백 | 선택 |
-| `ffmpeg` (시스템) | 영상 프레임 추출 | 선택 |
+## 레거시
+
+Python 기반 CLI / FastAPI 웹 UI (`duplicate_finder.py`, `dup_web.py`)는 레거시로 유지됩니다.  
+현재 메인 개발은 Tauri 앱 기준입니다.

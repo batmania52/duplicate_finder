@@ -213,7 +213,7 @@ fn pick_open_zip_blocking() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
         let output = std::process::Command::new("osascript")
-            .args(["-e", "POSIX path of (choose file with prompt \"ZIP 불러오기\" of type {\"zip\"})"])
+            .args(["-e", "POSIX path of (choose file with prompt \"ZIP 불러오기\" of type {\"public.zip-archive\", \"com.pkware.zip-archive\"})"])
             .output().ok()?;
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -244,7 +244,7 @@ fn pick_open_path_blocking() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
         let output = std::process::Command::new("osascript")
-            .args(["-e", "POSIX path of (choose file with prompt \"프리셋 불러오기\" of type {\"json\"})"])
+            .args(["-e", "POSIX path of (choose file with prompt \"프리셋 불러오기\" of type {\"public.json\"})"])
             .output().ok()?;
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
