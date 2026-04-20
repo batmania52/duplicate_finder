@@ -48,7 +48,8 @@ pub async fn run_scan(
         regular_files.push(f.clone());
     }
 
-    // SHA-256 중복 탐지
+    // SHA-256 중복 탐지 — \r(flush) 후 단계 시작 메시지
+    let _ = log_tx.send("\r".to_string());
     let _ = log_tx.send(format!("해시 중복 탐지 중... ({} 파일)", regular_files.len()));
     let regular = {
         let files = regular_files.clone();
@@ -63,6 +64,7 @@ pub async fn run_scan(
 
     // pHash 이미지 유사도
     let image = if !options.no_phash && !image_files.is_empty() {
+        let _ = log_tx.send("\r".to_string());
         let _ = log_tx.send(format!("이미지 유사도 분석 중... ({} 파일)", image_files.len()));
         let exact = options.phash_exact;
         let similar = options.phash_similar;
@@ -82,6 +84,7 @@ pub async fn run_scan(
 
     // vHash 영상 유사도
     let video = if !options.no_vhash && !video_files.is_empty() {
+        let _ = log_tx.send("\r".to_string());
         let _ = log_tx.send(format!("영상 유사도 분석 중... ({} 파일)", video_files.len()));
         let n_frames = options.vhash_frames;
         let exact = options.vhash_exact;
@@ -98,6 +101,7 @@ pub async fn run_scan(
 
     // 아카이브 내부 중복
     let archive = if !options.no_archive && !archive_files.is_empty() {
+        let _ = log_tx.send("\r".to_string());
         let _ = log_tx.send(format!("아카이브 중복 분석 중... ({} 파일)", archive_files.len()));
         let min_overlap = options.min_overlap;
         let log_tx2 = log_tx.clone();

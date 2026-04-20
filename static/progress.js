@@ -16,9 +16,14 @@ function updateLog(lines) {
     if (line.startsWith('\r')) {
       const text = line.slice(1);
       const last = el.querySelector('.progress');
-      const div = makeLogDiv(text, 'progress');
-      if (last) last.replaceWith(div);
-      else el.appendChild(div);
+      if (text === '') {
+        // 빈 \r = flush: .progress div를 일반 div로 확정
+        if (last) last.className = '';
+      } else {
+        const div = makeLogDiv(text, 'progress');
+        if (last) last.replaceWith(div);
+        else el.appendChild(div);
+      }
     } else {
       el.appendChild(makeLogDiv(line));
     }
