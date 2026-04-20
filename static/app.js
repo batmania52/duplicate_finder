@@ -5,6 +5,7 @@ let filterText = '';
 let sortOrder = 'none';
 let typeFilter = 'all';
 let pollTimer = null;
+let logSeenCount = 0;
 
 // ── VirtualScroller ──
 const ROW_H = 44;   // 그룹 헤더 높이
@@ -178,7 +179,7 @@ let platform = 'darwin';
       setStatus(data.status === 'done' ? '스캔 완료' : data.status);
       setHeaderStatus(data.status === 'done' ? '완료' : data.status);
     }
-    if (data.log?.length) updateLog(data.log);
+    if (data.log?.length) { updateLog(data.log); logSeenCount = data.log.length; }
     if (data.paths?.length) {
       setScanPaths(data.paths);
     }
@@ -194,6 +195,7 @@ async function startScan() {
   btn.disabled = true;
   document.getElementById('cancel-btn').style.display = '';
   document.getElementById('log-panel').innerHTML = '';
+  logSeenCount = 0;
   setStatus('스캔 중...');
   setHeaderStatus('스캔 중...');
 
@@ -225,7 +227,10 @@ async function pollStatus() {
   try {
     const r = await fetch('/api/scan/status');
     const data = await r.json();
-    updateLog(data.log);
+    if (data.log?.length > logSeenCount) {
+      updateLog(data.log.slice(logSeenCount));
+      logSeenCount = data.log.length;
+    }
     if (data.status === 'done' || data.status === 'error' || data.status === 'cancelled') {
       clearInterval(pollTimer);
       document.getElementById('scan-btn').disabled = false;
