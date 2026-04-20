@@ -12,3 +12,4 @@ venv/
 bak/
 docs/
 src-tauri/target/
+src-tauri/ffmpeg-dlls/
