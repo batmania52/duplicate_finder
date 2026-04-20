@@ -12,6 +12,7 @@ use tower_http::cors::{Any, CorsLayer};
 use rust_embed::RustEmbed;
 use std::net::SocketAddr;
 
+use axum::extract::Extension;
 use state::new_shared_state;
 use api::{scan, files, misc, csv};
 
@@ -58,6 +59,7 @@ pub async fn start_server(port: u16, ready_tx: Option<std::sync::mpsc::Sender<()
         .route("/", get(index_handler))
         .route("/{*path}", get(static_handler))
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+        .layer(Extension(port))
         .with_state(shared);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

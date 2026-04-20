@@ -147,6 +147,10 @@ let platform = 'darwin';
     const r = await fetch('/api/platform');
     const data = await r.json();
     platform = data.platform || 'darwin';
+    if (data.port) {
+      const el = document.getElementById('header-status');
+      if (el) el.textContent = `:${data.port}`;
+    }
   } catch(e) {}
 })();
 

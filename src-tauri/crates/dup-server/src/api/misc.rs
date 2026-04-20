@@ -1,8 +1,8 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::{State, Extension}, http::StatusCode, Json};
 use serde::Deserialize;
 use crate::state::SharedState;
 
-pub async fn api_platform() -> Json<serde_json::Value> {
+pub async fn api_platform(Extension(port): Extension<u16>) -> Json<serde_json::Value> {
     let platform = if cfg!(target_os = "macos") {
         "darwin"
     } else if cfg!(target_os = "windows") {
@@ -10,7 +10,7 @@ pub async fn api_platform() -> Json<serde_json::Value> {
     } else {
         "linux"
     };
-    Json(serde_json::json!({"platform": platform}))
+    Json(serde_json::json!({"platform": platform, "port": port}))
 }
 
 #[derive(Deserialize)]
