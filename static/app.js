@@ -5,6 +5,7 @@ let filterText = '';
 let sortOrder = 'none';
 let typeFilter = 'all';
 let pollTimer = null;
+let pollActive = false;
 let logSeenCount = 0;
 
 // ── VirtualScroller ──
@@ -170,7 +171,7 @@ let platform = 'darwin';
       document.getElementById('scan-btn').disabled = true;
       document.getElementById('cancel-btn').style.display = '';
       setStatus('스캔 중...'); setHeaderStatus('스캔 중...');
-      pollTimer = setInterval(pollStatus, 800);
+      startPolling();
     } else if (data.result) {
       state = data.result;
       tabCache.invalidateAll();
@@ -219,8 +220,26 @@ async function startScan() {
   try {
     const r = await fetch('/api/scan', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (!r.ok) { const e = await r.json(); alert(e.detail); btn.disabled = false; return; }
-    pollTimer = setInterval(pollStatus, 800);
+    startPolling();
   } catch(e) { alert('요청 실패: ' + e); btn.disabled = false; }
+}
+
+function startPolling() {
+  pollActive = true;
+  schedulePoll();
+}
+
+function stopPolling() {
+  pollActive = false;
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+}
+
+function schedulePoll() {
+  if (!pollActive) return;
+  pollTimer = setTimeout(async () => {
+    await pollStatus();
+    schedulePoll();
+  }, 600);
 }
 
 async function pollStatus() {
@@ -232,7 +251,7 @@ async function pollStatus() {
       logSeenCount = data.log.length;
     }
     if (data.status === 'done' || data.status === 'error' || data.status === 'cancelled') {
-      clearInterval(pollTimer);
+      stopPolling();
       document.getElementById('scan-btn').disabled = false;
       document.getElementById('cancel-btn').style.display = 'none';
       if (data.status === 'done' && data.result) {
