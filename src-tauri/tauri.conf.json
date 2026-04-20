@@ -28,15 +28,6 @@
       "icons/32x32.png",
       "icons/128x128.png"
     ],
-    "resources": {
-      "ffmpeg-dlls/avcodec-62.dll": ".",
-      "ffmpeg-dlls/avdevice-62.dll": ".",
-      "ffmpeg-dlls/avfilter-11.dll": ".",
-      "ffmpeg-dlls/avformat-62.dll": ".",
-      "ffmpeg-dlls/avutil-60.dll": ".",
-      "ffmpeg-dlls/swresample-6.dll": ".",
-      "ffmpeg-dlls/swscale-9.dll": "."
-    },
     "windows": {
       "nsis": {
         "installMode": "currentUser"
