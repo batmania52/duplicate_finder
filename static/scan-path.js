@@ -51,10 +51,9 @@ function removePathRow(btn) {
 
 async function openFolderDialog(input) {
   try {
-    const { open } = window.__TAURI__?.dialog || {};
-    if (!open) return;
-    const selected = await open({ directory: true, multiple: false });
-    if (selected) input.value = selected;
+    const res = await fetch('/api/pick-folder');
+    const data = await res.json();
+    if (data.path) input.value = data.path;
   } catch (e) {
     console.error('folder dialog error', e);
   }

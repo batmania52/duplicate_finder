@@ -58,6 +58,41 @@ pub struct FileQuery {
     pub path: String,
 }
 
+pub async fn api_pick_folder() -> Json<serde_json::Value> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose folder with prompt \"폴더 선택\")"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                let path = String::from_utf8_lossy(&o.stdout).trim().trim_end_matches('/').to_string();
+                return Json(serde_json::json!({ "path": path }));
+            }
+            _ => {}
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command",
+                "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
+                 $f = New-Object System.Windows.Forms.FolderBrowserDialog; \
+                 $f.ShowDialog() | Out-Null; $f.SelectedPath"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Json(serde_json::json!({ "path": path }));
+                }
+            }
+            _ => {}
+        }
+    }
+    Json(serde_json::json!({ "path": null }))
+}
+
 pub async fn api_file(
     Query(q): Query<FileQuery>,
 ) -> impl IntoResponse {
