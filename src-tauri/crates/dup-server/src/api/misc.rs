@@ -81,11 +81,14 @@ fn pick_folder_blocking() -> Option<String> {
     }
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let output = std::process::Command::new("powershell")
             .args(["-NoProfile", "-Command",
                 "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
                  $f = New-Object System.Windows.Forms.FolderBrowserDialog; \
                  $f.ShowDialog() | Out-Null; $f.SelectedPath"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
         if output.status.success() {
