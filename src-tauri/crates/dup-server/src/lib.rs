@@ -41,7 +41,7 @@ fn serve_static(path: &str) -> impl IntoResponse {
     }
 }
 
-pub async fn start_server(port: u16) -> anyhow::Result<()> {
+pub async fn start_server(port: u16, ready_tx: Option<std::sync::mpsc::Sender<()>>) -> anyhow::Result<()> {
     let shared = new_shared_state();
 
     let app = Router::new()
@@ -60,10 +60,16 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
         .with_state(shared);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("Dup Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    // 바인딩 완료 후 ready 신호 전송
+    if let Some(tx) = ready_tx {
+        let _ = tx.send(());
+    }
+
     axum::serve(listener, app).await?;
     Ok(())
 }
