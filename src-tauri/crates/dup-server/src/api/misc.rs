@@ -59,17 +59,24 @@ pub struct FileQuery {
 }
 
 pub async fn api_pick_folder() -> Json<serde_json::Value> {
+    let result = tokio::task::spawn_blocking(|| pick_folder_blocking()).await;
+    let path = result.ok().flatten();
+    Json(serde_json::json!({ "path": path }))
+}
+
+fn pick_folder_blocking() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
         let output = std::process::Command::new("osascript")
             .args(["-e", "POSIX path of (choose folder with prompt \"폴더 선택\")"])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => {
-                let path = String::from_utf8_lossy(&o.stdout).trim().trim_end_matches('/').to_string();
-                return Json(serde_json::json!({ "path": path }));
-            }
-            _ => {}
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .trim_end_matches('/')
+                .to_string();
+            if !path.is_empty() { return Some(path); }
         }
     }
     #[cfg(target_os = "windows")]
@@ -79,18 +86,14 @@ pub async fn api_pick_folder() -> Json<serde_json::Value> {
                 "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
                  $f = New-Object System.Windows.Forms.FolderBrowserDialog; \
                  $f.ShowDialog() | Out-Null; $f.SelectedPath"])
-            .output();
-        match output {
-            Ok(o) if o.status.success() => {
-                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Json(serde_json::json!({ "path": path }));
-                }
-            }
-            _ => {}
+            .output()
+            .ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
         }
     }
-    Json(serde_json::json!({ "path": null }))
+    None
 }
 
 pub async fn api_file(
