@@ -34,7 +34,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
         .with_state(shared);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Dup Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
