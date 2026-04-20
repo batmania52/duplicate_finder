@@ -1,9 +1,12 @@
 use axum::{
     Router,
     routing::{get, post},
+    response::IntoResponse,
+    http::{StatusCode, header},
+    extract::Path,
 };
 use tower_http::cors::{Any, CorsLayer};
-use tower_http::services::ServeDir;
+use rust_embed::RustEmbed;
 use std::net::SocketAddr;
 
 mod state;
@@ -12,12 +15,34 @@ mod api;
 use state::new_shared_state;
 use api::{scan, files, misc, csv};
 
+#[derive(RustEmbed)]
+#[folder = "../../../static/"]
+struct Static;
+
+async fn static_handler(Path(path): Path<String>) -> impl IntoResponse {
+    serve_static(&path)
+}
+
+async fn index_handler() -> impl IntoResponse {
+    serve_static("index.html")
+}
+
+fn serve_static(path: &str) -> impl IntoResponse {
+    match Static::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+                content.data.into_owned(),
+            ).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, [(header::CONTENT_TYPE, "text/plain".to_string())], b"404 Not Found".to_vec()).into_response(),
+    }
+}
+
 pub async fn start_server(port: u16) -> anyhow::Result<()> {
     let shared = new_shared_state();
-
-    let static_dir = std::env::current_dir()
-        .unwrap_or_default()
-        .join("static");
 
     let app = Router::new()
         .route("/api/scan", post(scan::api_scan))
@@ -30,7 +55,8 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
         .route("/api/delete", post(files::api_delete))
         .route("/api/save-csv", post(csv::api_save_csv))
         .route("/api/load-csv", post(csv::api_load_csv))
-        .fallback_service(ServeDir::new(&static_dir))
+        .route("/", get(index_handler))
+        .route("/{*path}", get(static_handler))
         .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
         .with_state(shared);
 
