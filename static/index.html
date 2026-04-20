@@ -69,7 +69,13 @@
         </div>
       </div>
       <div id="log-panel"></div>
-      <div id="status-bar">대기 중</div>
+      <div id="status-bar">
+        <div id="status-text">대기 중</div>
+        <div id="status-gauge" style="display:none">
+          <div id="gauge-label"></div>
+          <div id="gauge-track"><div id="gauge-fill"></div></div>
+        </div>
+      </div>
     </div>
 
     <!-- 콘텐츠 -->
@@ -104,9 +110,6 @@
       <div id="groups-container-wrap"></div>
       <div id="action-bar">
         <div class="action-row">
-          <input id="load-csv-input" type="text" placeholder="dup_session_*.zip 경로..."
-            style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:4px 8px;font:inherit;font-size:12px"
-            onkeydown="if(event.key==='Enter')loadCsv()" title="⚠ ZIP 내 CSV를 직접 수정하면 불러오기가 실패할 수 있습니다">
           <button class="action-btn" onclick="loadCsv()">ZIP 불러오기</button>
           <button class="action-btn primary" onclick="saveCsv()">ZIP 저장</button>
         </div>

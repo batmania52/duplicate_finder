@@ -1,5 +1,14 @@
-// progress.js — 진행 카운터 덮어쓰기 지원 updateLog
+// progress.js — 진행 카운터 덮어쓰기 지원 updateLog + 게이지 업데이트
 // \r prefix 메시지는 마지막 .progress div를 교체, 나머지는 새 div 추가
+
+function setGauge(progress) {
+  const gaugeEl = document.getElementById('status-gauge');
+  if (!gaugeEl) return;
+  if (!progress) { gaugeEl.style.display = 'none'; return; }
+  gaugeEl.style.display = '';
+  document.getElementById('gauge-label').textContent = progress.label;
+  document.getElementById('gauge-fill').style.width = (progress.pct * 100).toFixed(1) + '%';
+}
 
 function makeLogDiv(text, cls) {
   const div = document.createElement('div');
@@ -7,6 +16,16 @@ function makeLogDiv(text, cls) {
   if (text.includes('[오류]')) div.className = 'err';
   div.textContent = text;
   return div;
+}
+
+// "(current / total)" 패턴 파싱 → { pct, label } 또는 null
+function parseProgress(text) {
+  const m = text.match(/\((\d+)\s*\/\s*(\d+)\)/);
+  if (!m) return null;
+  const current = parseInt(m[1], 10);
+  const total = parseInt(m[2], 10);
+  if (total === 0) return null;
+  return { pct: current / total, label: text };
 }
 
 function updateLog(lines) {
@@ -17,12 +36,13 @@ function updateLog(lines) {
       const text = line.slice(1);
       const last = el.querySelector('.progress');
       if (text === '') {
-        // 빈 \r = flush: .progress div를 일반 div로 확정
         if (last) last.className = '';
+        setGauge(null);
       } else {
         const div = makeLogDiv(text, 'progress');
         if (last) last.replaceWith(div);
         else el.appendChild(div);
+        setGauge(parseProgress(text));
       }
     } else {
       el.appendChild(makeLogDiv(line));

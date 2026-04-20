@@ -8,6 +8,7 @@ use crate::state::SharedState;
 #[derive(Deserialize)]
 pub struct SaveCsvRequest {
     pub state: serde_json::Value,
+    pub path: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -26,7 +27,7 @@ pub async fn api_save_csv(
         .unwrap_or_else(|| Local::now().format("%Y%m%d_%H%M%S").to_string());
     drop(st);
 
-    let zip_name = format!("dup_session_{}.zip", timestamp);
+    let zip_name = req.path.unwrap_or_else(|| format!("dup_session_{}.zip", timestamp));
     let zip_path = std::path::Path::new(&zip_name);
 
     let file = std::fs::File::create(zip_path)

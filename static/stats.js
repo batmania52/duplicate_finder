@@ -24,20 +24,22 @@ function buildStatsPanel(state) {
   let totalCount = 0;
   let totalSize  = 0;
 
-  const allGroups = [
-    ...(state.groups?.regular  || []),
-    ...(state.groups?.image    || []),
-    ...(state.groups?.video    || []),
-    ...(state.groups?.archive  || []),
+  const tabGroups = [
+    { type: 'regular',  groups: state.regular  || [] },
+    { type: 'image',    groups: state.image    || [] },
+    { type: 'video',    groups: state.video    || [] },
+    { type: 'archive',  groups: state.archive  || [] },
   ];
 
-  for (const g of allGroups) {
-    for (const f of (g.files || [])) {
-      const t = detectType(f.path, g.group_type);
-      counts[t] = (counts[t] || 0) + 1;
-      sizes[t]  = (sizes[t]  || 0) + (f.size || 0);
-      totalCount++;
-      totalSize += (f.size || 0);
+  for (const { type: tabType, groups } of tabGroups) {
+    for (const g of groups) {
+      for (const f of (g.files || [])) {
+        const t = detectType(f.path, tabType);
+        counts[t] = (counts[t] || 0) + 1;
+        sizes[t]  = (sizes[t]  || 0) + (f.size || 0);
+        totalCount++;
+        totalSize += (f.size || 0);
+      }
     }
   }
 

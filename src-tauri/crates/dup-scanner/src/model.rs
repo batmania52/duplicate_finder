@@ -18,6 +18,8 @@ pub struct FileEntry {
     pub frame_count: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shared: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_files: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

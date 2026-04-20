@@ -566,12 +566,12 @@ document.addEventListener('click', async e => {
 
 // ── 세션 ZIP 불러오기 ──
 async function loadCsv() {
-  const path = document.getElementById('load-csv-input').value.trim();
-  if (!path) { alert('ZIP 파일 경로를 입력하세요'); return; }
+  const picked = await fetch('/api/pick-open-zip').then(r => r.json());
+  if (!picked.path) return;
   try {
     const r = await fetch('/api/load-csv', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ path })
+      body: JSON.stringify({ path: picked.path })
     });
     if (!r.ok) { const e = await r.json(); alert(e.detail); return; }
     const data = await r.json();
@@ -595,9 +595,11 @@ async function loadCsv() {
 async function saveCsv() {
   const hasData = Object.values(state).some(g => g.length > 0);
   if (!hasData) { alert('저장할 데이터가 없습니다'); return; }
+  const picked = await fetch('/api/pick-save-zip').then(r => r.json());
+  if (!picked.path) return;
   const r = await fetch('/api/save-csv', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ state })
+    body: JSON.stringify({ state, path: picked.path })
   });
   if (!r.ok) { const e = await r.json(); alert(e.detail); return; }
   const data = await r.json();
@@ -707,7 +709,6 @@ async function doReset(overlay) {
   const wrap = getWrap();
   if (wrap) wrap.innerHTML = '';
   document.getElementById('log-panel').innerHTML = '';
-  document.getElementById('load-csv-input').value = '';
   const scanBtn = document.getElementById('scan-btn');
   scanBtn.disabled = false;
   scanBtn.title = '';
@@ -744,7 +745,11 @@ function updateActionInfo() {
     `${totalGroups}그룹 · REMOVE ${removeCount}개${savable}`;
 }
 
-function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
+function setStatus(msg) {
+  document.getElementById('status-text').textContent = msg;
+  setGauge(null);
+}
+
 function setHeaderStatus(msg) { document.getElementById('header-status').textContent = msg; }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/\\/g,'\\\\'); }

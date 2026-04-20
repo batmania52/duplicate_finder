@@ -127,7 +127,7 @@ pub async fn api_scan_status(
     let st = state.lock().await;
     Json(serde_json::json!({
         "status": st.status,
-        "log": st.log.iter().rev().take(50).rev().collect::<Vec<_>>(),
+        "log": st.log,
         "result": st.result,
         "timestamp": st.timestamp,
         "paths": st.paths,

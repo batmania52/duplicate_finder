@@ -46,6 +46,8 @@ pub fn find_archive_duplicates(
                 let size_b = std::fs::metadata(path_b).map(|m| m.len()).unwrap_or(0);
                 let savable = size_a.min(size_b);
 
+                let total_a = entries_a.len() as u32;
+                let total_b = entries_b.len() as u32;
                 let files = vec![
                     FileEntry {
                         path: path_a.clone(),
@@ -54,6 +56,7 @@ pub fn find_archive_duplicates(
                         keep: true,
                         file_type: "archive".to_string(),
                         shared: Some(shared_count),
+                        total_files: Some(total_a),
                         ..Default::default()
                     },
                     FileEntry {
@@ -63,6 +66,7 @@ pub fn find_archive_duplicates(
                         keep: false,
                         file_type: "archive".to_string(),
                         shared: Some(shared_count),
+                        total_files: Some(total_b),
                         ..Default::default()
                     },
                 ];
