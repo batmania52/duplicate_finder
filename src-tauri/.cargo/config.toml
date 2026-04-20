@@ -1,0 +1,2 @@
+[env]
+FFMPEG_DIR = "/opt/homebrew/Cellar/ffmpeg/8.1"

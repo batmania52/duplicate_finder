@@ -1,0 +1,30 @@
+[package]
+name = "dup-server"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "dup_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dup-server"
+path = "src/main.rs"
+
+[dependencies]
+dup-scanner = { path = "../dup-scanner" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+csv = { workspace = true }
+zip = { workspace = true }

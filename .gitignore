@@ -11,3 +11,4 @@ venv/
 .pdca-state.json
 bak/
 docs/
+src-tauri/target/

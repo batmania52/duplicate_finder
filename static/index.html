@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dup Web</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <h1>Dup Web</h1>
+    <span id="header-status" style="font-size:11px;color:var(--text2)">준비</span>
+    <button id="theme-btn" onclick="toggleTheme()">☀</button>
+  </div>
+  <div id="main">
+    <!-- 사이드바 -->
+    <div id="sidebar">
+      <div id="scan-panel">
+        <label>스캔 경로 (줄바꿈으로 여러 개)</label>
+        <textarea id="paths-input" placeholder="/Users/macbook/nas/Nas/Sub3&#10;/Users/macbook/nas/Movs"></textarea>
+        <div class="opt-row">
+          <label><input type="checkbox" id="opt-no-phash"> 이미지 skip</label>
+          <label><input type="checkbox" id="opt-no-vhash"> 영상 skip</label>
+          <label><input type="checkbox" id="opt-no-archive"> 압축 skip</label>
+        </div>
+        <details style="margin-top:8px">
+          <summary style="font-size:11px;color:var(--text2);cursor:pointer;user-select:none">고급 옵션</summary>
+          <div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--text2)">
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">이미지 exact 임계값</span>
+              <input type="number" id="opt-phash-exact" value="0" min="0" max="64" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">이미지 similar 임계값</span>
+              <input type="number" id="opt-phash-similar" value="10" min="0" max="64" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">영상 exact 임계값</span>
+              <input type="number" id="opt-vhash-exact" value="0" min="0" max="64" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">영상 similar 임계값</span>
+              <input type="number" id="opt-vhash-similar" value="10" min="0" max="64" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">영상 샘플 프레임 수</span>
+              <input type="number" id="opt-vhash-frames" value="10" min="1" max="60" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">압축 최소 겹침 파일 수</span>
+              <input type="number" id="opt-min-overlap" value="5" min="1" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">압축 최소 내부 파일 수</span>
+              <input type="number" id="opt-min-arc-files" value="0" min="0" title="0=제한없음" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span>제외 패턴 (줄바꿈, fnmatch 형식)</span>
+              <textarea id="opt-exclude-patterns" rows="3" placeholder="*.tmp&#10;.DS_Store&#10;**/Thumbs.db" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font:inherit;font-size:11px;resize:vertical"></textarea>
+            </div>
+          </div>
+        </details>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button id="scan-btn" onclick="startScan()" style="flex:1;margin-top:0">스캔 시작</button>
+          <button id="cancel-btn" onclick="cancelScan()" style="padding:7px 10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:var(--radius);font:inherit;cursor:pointer;display:none">중단</button>
+        </div>
+      </div>
+      <div id="log-panel"></div>
+      <div id="status-bar">대기 중</div>
+    </div>
+
+    <!-- 콘텐츠 -->
+    <div id="content">
+      <div id="tabs">
+        <div class="tab active" data-tab="regular" onclick="switchTab('regular')">일반 <span class="badge" id="badge-regular">0</span></div>
+        <div class="tab" data-tab="image" onclick="switchTab('image')">이미지 <span class="badge" id="badge-image">0</span></div>
+        <div class="tab" data-tab="video" onclick="switchTab('video')">영상 <span class="badge" id="badge-video">0</span></div>
+        <div class="tab" data-tab="archive" onclick="switchTab('archive')">아카이브 <span class="badge" id="badge-archive">0</span></div>
+      </div>
+      <div id="filter-bar">
+        <input id="filter-input" type="text" placeholder="경로/파일명 필터..." oninput="applyFilter()">
+        <select id="sort-select" onchange="applySort(this.value)" title="그룹 목록 정렬" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:4px 6px;font:inherit;font-size:12px;cursor:pointer">
+          <option value="none">정렬 없음</option>
+          <option value="savable">절약 용량↓</option>
+          <option value="total">최대 파일 크기↓</option>
+          <option value="count">파일 수↓</option>
+          <option value="archive_first">아카이브 우선</option>
+        </select>
+        <button class="filter-btn" onclick="bulkKeep()">필터 내 일괄 KEEP</button>
+        <button class="filter-btn" onclick="bulkRemove()">필터 내 일괄 REMOVE</button>
+        <button class="filter-btn" onclick="clearFilter()">초기화</button>
+      </div>
+      <div id="type-filter-bar" style="padding:4px 8px;gap:4px;align-items:center;font-size:12px;border-bottom:1px solid var(--border);display:none">
+        <span style="color:var(--text2);margin-right:4px">보기:</span>
+        <button class="type-filter-btn active" data-type="all" onclick="applyTypeFilter('all')">전체</button>
+        <button class="type-filter-btn" data-type="normal" onclick="applyTypeFilter('normal')">일반 파일만</button>
+        <button class="type-filter-btn" data-type="archive" onclick="applyTypeFilter('archive')">아카이브 내부만</button>
+      </div>
+      <div id="groups-container-wrap"></div>
+      <div id="action-bar">
+        <div class="action-row">
+          <input id="load-csv-input" type="text" placeholder="dup_session_*.zip 경로..."
+            style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:4px 8px;font:inherit;font-size:12px"
+            onkeydown="if(event.key==='Enter')loadCsv()" title="⚠ ZIP 내 CSV를 직접 수정하면 불러오기가 실패할 수 있습니다">
+          <button class="action-btn" onclick="loadCsv()">ZIP 불러오기</button>
+          <button class="action-btn primary" onclick="saveCsv()">ZIP 저장</button>
+        </div>
+        <div class="action-row">
+          <span class="info" id="action-info"></span>
+          <button class="action-btn" onclick="checkFiles()">파일 존재 확인</button>
+          <button class="action-btn danger" onclick="confirmDelete(false)">선택 삭제</button>
+          <button class="action-btn danger" onclick="confirmDelete(true)">전체 REMOVE 삭제</button>
+          <button class="action-btn danger" onclick="confirmReset()">전체 초기화</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

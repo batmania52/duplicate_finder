@@ -60,6 +60,9 @@ async def lifespan(app):
 app = FastAPI(title="Dup Web", lifespan=lifespan)
 VERBOSE = False
 
+_static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
 import multiprocessing
 import uuid as _uuid_mod
 _scan_process: multiprocessing.Process | None = None
@@ -105,6 +108,7 @@ def _build_regular_groups(duplicates: list) -> list:
         groups.append({
             "id": f"R{gid}",
             "files": files,
+            "savable": savable,
             "savable_fmt": _fmt_size(savable),
         })
     return groups
@@ -130,6 +134,7 @@ def _build_image_groups(exact_groups: list, similar_groups: list) -> list:
                 "id": f"I{gid}",
                 "category": category,
                 "files": files,
+                "savable": savable,
                 "savable_fmt": _fmt_size(savable),
             })
             gid += 1
@@ -155,6 +160,7 @@ def _build_video_groups(exact_groups: list, similar_groups: list) -> list:
                 "id": f"V{gid}",
                 "category": category,
                 "files": files,
+                "savable": savable,
                 "savable_fmt": _fmt_size(savable),
             })
             gid += 1
@@ -175,7 +181,7 @@ def _build_archive_groups(overlaps: list) -> list:
 
     # 그룹별 집계
     group_data: dict[int, dict] = defaultdict(lambda: {
-        "paths": set(), "shared": 0, "sizes": {}
+        "paths": set(), "shared": 0, "sizes": {}, "total_files": {}
     })
     for p in all_paths:
         root = find(path_idx[p])
@@ -188,6 +194,8 @@ def _build_archive_groups(overlaps: list) -> list:
     for ov in overlaps:
         root = find(path_idx[ov["archive_a"]])
         group_data[root]["shared"] = max(group_data[root]["shared"], ov["common_file_count"])
+        group_data[root]["total_files"][ov["archive_a"]] = ov.get("a_total", 0)
+        group_data[root]["total_files"][ov["archive_b"]] = ov.get("b_total", 0)
 
     # 공통 파일 수 내림차순 정렬
     sorted_groups = sorted(group_data.values(), key=lambda x: x["shared"], reverse=True)
@@ -204,6 +212,7 @@ def _build_archive_groups(overlaps: list) -> list:
                 "size_fmt": _fmt_size(sz),
                 "type": "archive",
                 "shared": gdata["shared"],
+                "total_files": gdata["total_files"].get(p, 0),
                 "keep": True,
             })
         savable = sum(f["size"] for f in files[1:])
@@ -211,6 +220,7 @@ def _build_archive_groups(overlaps: list) -> list:
             "id": f"A{gid}",
             "shared": gdata["shared"],
             "files": files,
+            "savable": savable,
             "savable_fmt": _fmt_size(savable),
         })
     return groups
@@ -298,8 +308,9 @@ def _do_scan(paths: list[str], options: dict, queue: multiprocessing.Queue):
             if count - _last_collect_log[0] >= 1000:
                 _last_collect_log[0] = count
                 log(f"  탐색 중... {count:,}개 ({dirpath})")
+        exclude_patterns = options.get("exclude_patterns") or []
         for p in paths:
-            collected = collect_files(p, progress_cb=_collect_progress)
+            collected = collect_files(p, progress_cb=_collect_progress, exclude_patterns=exclude_patterns)
             files.extend(collected)
             log(f"  {p}: {len(collected):,}개")
         log(f"  합계: {len(files):,}개 파일")
@@ -440,6 +451,7 @@ class ScanRequest(BaseModel):
     vhash_frames: int = 10
     min_overlap: int = 5
     min_arc_files: int = 0  # 0 = 제한 없음
+    exclude_patterns: list[str] = []
 
 
 class DeleteRequest(BaseModel):
@@ -491,12 +503,25 @@ async def api_scan_cancel():
     return {"status": "cancelled"}
 
 
+@app.get("/api/platform")
+async def api_platform():
+    return {"platform": sys.platform}
+
+
 @app.post("/api/open-finder")
 async def api_open_finder(body: dict):
     path = body.get("path", "")
     if not path:
         raise HTTPException(status_code=400, detail="path 필요")
-    subprocess.Popen(["open", "-R", path])
+    # 아카이브 내부 파일 경로(zip::내부파일) → zip 파일 경로만 사용
+    path = path.split("::")[0]
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", path])
+    elif sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    else:
+        # Linux: xdg-open으로 상위 디렉토리 열기
+        subprocess.Popen(["xdg-open", str(Path(path).parent)])
     return {"ok": True}
 
 
@@ -505,37 +530,84 @@ async def api_check_files():
     """scan_state의 모든 탭에서 실제 존재하지 않는 파일을 제거하고 missing 경로 목록 반환."""
     if not scan_state.get("result"):
         raise HTTPException(status_code=400, detail="스캔 결과가 없습니다")
-    _log("\n[파일 확인] 존재 여부 확인 시작...")
+    _log("[파일 확인] 시작...")
     missing = []
+
+    def _exists(path: str) -> bool:
+        try:
+            # zip_entry 경로(zip::내부파일)는 zip 파일 존재 여부만 확인
+            real = path.split("::")[0]
+            return os.path.exists(real)
+        except OSError:
+            return True  # 접근 오류(NAS 등)는 존재하는 것으로 처리
+
     for tab in ("regular", "image", "video", "archive"):
         groups = scan_state["result"].get(tab) or []
         new_groups = []
         for g in groups:
-            kept = [f for f in g["files"] if os.path.exists(f["path"])]
-            gone = [f["path"] for f in g["files"] if not os.path.exists(f["path"])]
+            kept = [f for f in g["files"] if _exists(f["path"])]
+            gone = [f["path"] for f in g["files"] if not _exists(f["path"])]
             missing.extend(gone)
-            if len(kept) > 1:
+            if len(kept) >= 1:
                 new_groups.append({**g, "files": kept})
         scan_state["result"][tab] = new_groups
+
     if missing:
-        for p in missing:
-            _log(f"  ✗ {p}")
-        _log(f"[파일 확인 완료] {len(missing)}개 없는 파일 제거됨")
+        _log(f"[파일 확인 완료] 없는 파일 {len(missing)}개 제거됨")
     else:
-        _log("[파일 확인 완료] 모든 파일이 존재합니다")
+        _log("[파일 확인 완료] 전체 정상")
     return {"missing": missing, "count": len(missing)}
+
+
+@app.post("/api/reset")
+async def api_reset():
+    """스캔 결과 및 로그 전체 초기화."""
+    scan_state["status"] = "idle"
+    scan_state["log"] = []
+    scan_state["result"] = None
+    scan_state["timestamp"] = None
+    scan_state["paths"] = []
+    scan_state["session_uuid"] = None
+    return {"ok": True}
+
+
+def _append_delete_log(entries: list[dict]):
+    """삭제 이력을 static/delete-log/YYYY-MM-DD.json에 append."""
+    if not entries:
+        return
+    log_dir = Path(__file__).parent / "static" / "delete-log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{datetime.now().strftime('%Y-%m-%d')}.json"
+    existing: list = []
+    if log_file.exists():
+        try:
+            existing = json.loads(log_file.read_text(encoding="utf-8"))
+        except Exception:
+            existing = []
+    log_file.write_text(json.dumps(existing + entries, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 @app.post("/api/delete")
 async def api_delete(req: DeleteRequest):
     deleted = []
     errors = []
+    log_entries = []
     _log(f"\n[삭제] {len(req.paths)}개 파일 삭제 시작")
     for path in req.paths:
+        if "::" in path:
+            _log(f"  — {path} (zip 내부 항목 건너뜀)")
+            continue
         try:
             if os.path.isfile(path):
+                size = os.path.getsize(path)
                 os.remove(path)
                 deleted.append(path)
+                log_entries.append({
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "path": path,
+                    "method": "delete",
+                    "size": size,
+                })
                 _log(f"  ✓ {path}")
             else:
                 errors.append({"path": path, "error": "파일이 존재하지 않음"})
@@ -544,6 +616,7 @@ async def api_delete(req: DeleteRequest):
             errors.append({"path": path, "error": str(e)})
             _log(f"  ✗ {path} ({e})")
     _log(f"[삭제 완료] {len(deleted)}개 성공" + (f" / {len(errors)}개 실패" if errors else ""))
+    _append_delete_log(log_entries)
 
     # scan_state["result"]에서도 삭제된 경로 제거 (리프레시 후 복원 시 반영)
     if scan_state.get("result") and deleted:
@@ -630,6 +703,7 @@ def _csv_rows_to_groups(tab: str, rows: list) -> list:
     groups = list(groups_map.values())
     for g in groups:
         savable = sum(f["size"] for f in g["files"] if not f["keep"])
+        g["savable"] = savable
         g["savable_fmt"] = _fmt_size(savable)
     return groups
 
@@ -741,118 +815,20 @@ async def api_load_csv(req: LoadCsvRequest):
 # 프론트엔드 HTML
 # ──────────────────────────────────────────────
 
-HTML = r"""<!DOCTYPE html>
+HTML = """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dup Web</title>
-<style>
-  :root {
-    --bg: #1a1a1a; --surface: #252525; --surface2: #2e2e2e;
-    --border: #3a3a3a; --text: #e0e0e0; --text2: #999;
-    --accent: #4a9eff; --green: #4caf50; --red: #f44336;
-    --yellow: #ff9800; --radius: 6px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font: 13px/1.5 'SF Mono', monospace; }
-
-  /* 레이아웃 */
-  #app { display: flex; flex-direction: column; height: 100vh; }
-  #header { padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-  #header h1 { font-size: 15px; font-weight: 600; color: var(--accent); }
-  #main { flex: 1; display: flex; overflow: hidden; }
-  #sidebar { width: 320px; min-width: 220px; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-  #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
-  #groups-container-wrap { flex: 1; overflow-y: auto; }
-
-  /* 사이드바 */
-  #scan-panel { padding: 12px; border-bottom: 1px solid var(--border); }
-  #scan-panel label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
-  #paths-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 6px 8px; font: inherit; resize: vertical; min-height: 60px; }
-  #paths-input:focus { outline: none; border-color: var(--accent); }
-  .opt-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .opt-row label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text2); cursor: pointer; }
-  #scan-btn { margin-top: 10px; width: 100%; padding: 7px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font: inherit; font-weight: 600; cursor: pointer; }
-  #scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  #scan-btn:hover:not(:disabled) { filter: brightness(1.15); }
-
-  /* 탭 */
-  #tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); }
-  .tab { padding: 8px 14px; cursor: pointer; font-size: 12px; color: var(--text2); border-bottom: 2px solid transparent; white-space: nowrap; }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab .badge { display: inline-block; background: var(--surface2); border-radius: 10px; padding: 1px 6px; font-size: 10px; margin-left: 4px; }
-
-  /* 필터 바 */
-  #filter-bar { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; background: var(--surface); flex-wrap: wrap; }
-  #filter-input { flex: 1; min-width: 140px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); padding: 4px 8px; font: inherit; }
-  #filter-input:focus { outline: none; border-color: var(--accent); }
-  .filter-btn { padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); border-radius: var(--radius); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
-  .filter-btn:hover { color: var(--text); border-color: var(--text2); }
-
-  /* 그룹 리스트 */
-  #groups-container { padding: 8px; }
-  .group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; overflow: hidden; }
-  .group-header { padding: 8px 12px; display: flex; align-items: center; gap: 8px; background: var(--surface2); cursor: pointer; user-select: none; }
-  .group-header:hover { filter: brightness(1.1); }
-  .group-id { font-size: 11px; color: var(--text2); min-width: 40px; flex-shrink: 0; }
-  .group-meta { flex: 1; font-size: 11px; color: var(--text2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .group-savable { font-size: 11px; color: var(--yellow); flex-shrink: 0; margin-left: 8px; }
-  .group-collapse { font-size: 11px; color: var(--text2); flex-shrink: 0; }
-
-  /* 파일 행 */
-  .file-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--border); cursor: pointer; transition: background 0.1s; outline: none; }
-  .file-row:focus { box-shadow: inset 0 0 0 2px var(--accent); }
-  .file-row:hover { background: var(--surface2); }
-  .file-row.keep { background: rgba(76,175,80,0.08); }
-  .file-row.keep:hover { background: rgba(76,175,80,0.14); }
-  .file-row.remove { background: rgba(244,67,54,0.06); }
-  .file-row.remove:hover { background: rgba(244,67,54,0.12); }
-  .file-status { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
-  .file-row.keep .file-status { background: var(--green); border-color: var(--green); }
-  .file-row.remove .file-status { background: var(--red); border-color: var(--red); }
-  .file-info { flex: 1; min-width: 0; }
-  .file-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-  .file-path { font-size: 10px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
-  .file-size { font-size: 11px; color: var(--text2); white-space: nowrap; flex-shrink: 0; text-align: right; min-width: 60px; }
-  .finder-btn { padding: 3px 8px; background: none; border: 1px solid var(--border); color: var(--text2); border-radius: 4px; font: 11px monospace; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
-  .finder-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  /* 액션 바 */
-  #action-bar { padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
-  #action-bar .action-row { display: flex; gap: 8px; align-items: center; }
-  #action-bar .action-row .info { flex: 1; font-size: 11px; color: var(--text2); }
-  #action-bar .info { flex: 1; font-size: 11px; color: var(--text2); }
-  .action-btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius); font: inherit; font-size: 12px; cursor: pointer; background: var(--surface2); color: var(--text); }
-  .action-btn:hover { border-color: var(--text2); }
-  .action-btn.danger { border-color: var(--red); color: var(--red); }
-  .action-btn.danger:hover { background: rgba(244,67,54,0.1); }
-  .action-btn.primary { border-color: var(--accent); color: var(--accent); }
-  .action-btn.primary:hover { background: rgba(74,158,255,0.1); }
-
-  /* 로그 패널 */
-  #log-panel { flex: 1; overflow-y: auto; padding: 8px 12px; font-size: 11px; color: var(--text2); line-height: 1.7; }
-  #log-panel .err { color: var(--red); }
-
-  /* 상태 */
-  #status-bar { padding: 4px 12px; font-size: 11px; color: var(--text2); border-top: 1px solid var(--border); background: var(--surface); }
-
-  /* 빈 상태 */
-  .empty { padding: 40px; text-align: center; color: var(--text2); font-size: 13px; }
-
-  /* 모달 */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-width: 300px; max-width: 500px; }
-  .modal h2 { font-size: 14px; margin-bottom: 12px; }
-  .modal p { font-size: 12px; color: var(--text2); margin-bottom: 16px; }
-  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div id="app">
   <div id="header">
     <h1>Dup Web</h1>
     <span id="header-status" style="font-size:11px;color:var(--text2)">준비</span>
+    <button id="theme-btn" onclick="toggleTheme()">☀</button>
   </div>
   <div id="main">
     <!-- 사이드바 -->
@@ -896,6 +872,10 @@ HTML = r"""<!DOCTYPE html>
               <span style="flex:1">압축 최소 내부 파일 수</span>
               <input type="number" id="opt-min-arc-files" value="0" min="0" title="0=제한없음" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
             </div>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span>제외 패턴 (줄바꿈, fnmatch 형식)</span>
+              <textarea id="opt-exclude-patterns" rows="3" placeholder="*.tmp&#10;.DS_Store&#10;**/Thumbs.db" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font:inherit;font-size:11px;resize:vertical"></textarea>
+            </div>
           </div>
         </details>
         <div style="display:flex;gap:6px;margin-top:10px">
@@ -917,11 +897,24 @@ HTML = r"""<!DOCTYPE html>
       </div>
       <div id="filter-bar">
         <input id="filter-input" type="text" placeholder="경로/파일명 필터..." oninput="applyFilter()">
+        <select id="sort-select" onchange="applySort(this.value)" title="그룹 목록 정렬" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:4px 6px;font:inherit;font-size:12px;cursor:pointer">
+          <option value="none">정렬 없음</option>
+          <option value="savable">절약 용량↓</option>
+          <option value="total">최대 파일 크기↓</option>
+          <option value="count">파일 수↓</option>
+          <option value="archive_first">아카이브 우선</option>
+        </select>
         <button class="filter-btn" onclick="bulkKeep()">필터 내 일괄 KEEP</button>
         <button class="filter-btn" onclick="bulkRemove()">필터 내 일괄 REMOVE</button>
         <button class="filter-btn" onclick="clearFilter()">초기화</button>
       </div>
-      <div id="groups-container-wrap"><div id="groups-container"></div></div>
+      <div id="type-filter-bar" style="padding:4px 8px;gap:4px;align-items:center;font-size:12px;border-bottom:1px solid var(--border);display:none">
+        <span style="color:var(--text2);margin-right:4px">보기:</span>
+        <button class="type-filter-btn active" data-type="all" onclick="applyTypeFilter('all')">전체</button>
+        <button class="type-filter-btn" data-type="normal" onclick="applyTypeFilter('normal')">일반 파일만</button>
+        <button class="type-filter-btn" data-type="archive" onclick="applyTypeFilter('archive')">아카이브 내부만</button>
+      </div>
+      <div id="groups-container-wrap"></div>
       <div id="action-bar">
         <div class="action-row">
           <input id="load-csv-input" type="text" placeholder="dup_session_*.zip 경로..."
@@ -935,401 +928,13 @@ HTML = r"""<!DOCTYPE html>
           <button class="action-btn" onclick="checkFiles()">파일 존재 확인</button>
           <button class="action-btn danger" onclick="confirmDelete(false)">선택 삭제</button>
           <button class="action-btn danger" onclick="confirmDelete(true)">전체 REMOVE 삭제</button>
+          <button class="action-btn danger" onclick="confirmReset()">전체 초기화</button>
         </div>
       </div>
     </div>
   </div>
 </div>
-
-<script>
-// ── 상태 ──
-let state = { regular: [], image: [], video: [], archive: [] };
-let currentTab = 'regular';
-let filterText = '';
-let pollTimer = null;
-
-// ── 페이지 로드 시 서버 상태 복원 ──
-(async function restoreState() {
-  try {
-    const r = await fetch('/api/scan/status');
-    const data = await r.json();
-    if (data.status === 'scanning') {
-      document.getElementById('scan-btn').disabled = true;
-      document.getElementById('cancel-btn').style.display = '';
-      setStatus('스캔 중...'); setHeaderStatus('스캔 중...');
-      pollTimer = setInterval(pollStatus, 800);
-    } else if (data.result) {
-      state = data.result;
-      updateBadges();
-      renderGroups();
-      setStatus(data.status === 'done' ? '스캔 완료' : data.status);
-      setHeaderStatus(data.status === 'done' ? '완료' : data.status);
-    }
-    if (data.log?.length) updateLog(data.log);
-    if (data.paths?.length) {
-      document.getElementById('paths-input').value = data.paths.join('\n');
-    }
-  } catch(e) {}
-})();
-
-// ── 스캔 ──
-async function startScan() {
-  const raw = document.getElementById('paths-input').value.trim();
-  if (!raw) { alert('경로를 입력하세요'); return; }
-  const paths = raw.split('\n').map(s => s.trim()).filter(Boolean);
-
-  const btn = document.getElementById('scan-btn');
-  btn.disabled = true;
-  document.getElementById('cancel-btn').style.display = '';
-  document.getElementById('log-panel').innerHTML = '';
-  setStatus('스캔 중...');
-  setHeaderStatus('스캔 중...');
-
-  const iv = id => parseInt(document.getElementById(id)?.value || '0', 10);
-  const body = {
-    paths,
-    no_phash: document.getElementById('opt-no-phash').checked,
-    no_vhash: document.getElementById('opt-no-vhash').checked,
-    no_archive: document.getElementById('opt-no-archive').checked,
-    phash_exact: iv('opt-phash-exact'),
-    phash_similar: iv('opt-phash-similar'),
-    vhash_exact: iv('opt-vhash-exact'),
-    vhash_similar: iv('opt-vhash-similar'),
-    vhash_frames: iv('opt-vhash-frames'),
-    min_overlap: iv('opt-min-overlap'),
-    min_arc_files: iv('opt-min-arc-files'),
-  };
-
-  try {
-    const r = await fetch('/api/scan', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (!r.ok) { const e = await r.json(); alert(e.detail); btn.disabled = false; return; }
-    pollTimer = setInterval(pollStatus, 800);
-  } catch(e) { alert('요청 실패: ' + e); btn.disabled = false; }
-}
-
-async function pollStatus() {
-  try {
-    const r = await fetch('/api/scan/status');
-    const data = await r.json();
-    updateLog(data.log);
-    if (data.status === 'done' || data.status === 'error' || data.status === 'cancelled') {
-      clearInterval(pollTimer);
-      document.getElementById('scan-btn').disabled = false;
-      document.getElementById('cancel-btn').style.display = 'none';
-      if (data.status === 'done' && data.result) {
-        state = data.result;
-        updateBadges();
-        renderGroups();
-        setStatus('스캔 완료');
-        setHeaderStatus('완료');
-      } else if (data.status === 'cancelled') {
-        setStatus('중단됨');
-        setHeaderStatus('중단');
-      } else {
-        setStatus('오류 발생');
-        setHeaderStatus('오류');
-      }
-    }
-  } catch(e) {}
-}
-
-async function cancelScan() {
-  const btn = document.getElementById('cancel-btn');
-  btn.disabled = true;
-  btn.textContent = '중단 중...';
-  try {
-    await fetch('/api/scan/cancel', { method: 'POST' });
-  } catch(e) {}
-}
-
-function updateLog(lines) {
-  const el = document.getElementById('log-panel');
-  el.innerHTML = lines.map(l =>
-    `<div class="${l.includes('[오류]') ? 'err' : ''}">${escHtml(l)}</div>`
-  ).join('');
-  el.scrollTop = el.scrollHeight;
-}
-
-// ── 탭 ──
-function switchTab(tab) {
-  currentTab = tab;
-  filterText = '';
-  document.getElementById('filter-input').value = '';
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  renderGroups();
-}
-
-function updateBadges() {
-  for (const tab of ['regular','image','video','archive']) {
-    document.getElementById('badge-' + tab).textContent = state[tab]?.length || 0;
-  }
-}
-
-// ── 렌더링 ──
-function renderGroups() {
-  const groups = filteredGroups();
-  const container = document.getElementById('groups-container');
-
-  if (!groups.length) {
-    container.innerHTML = '<div class="empty">표시할 그룹이 없습니다</div>';
-    updateActionInfo();
-    return;
-  }
-
-  container.innerHTML = groups.map(g => renderGroup(g)).join('');
-  updateActionInfo();
-}
-
-function filteredGroups() {
-  const groups = state[currentTab] || [];
-  if (!filterText) return groups;
-  const q = filterText.toLowerCase();
-  return groups.filter(g => g.files.some(f => f.path.toLowerCase().includes(q)));
-}
-
-function renderGroup(g) {
-  const removeCount = g.files.filter(f => !f.keep).length;
-  const meta = buildMeta(g);
-  const filesHtml = g.files.map((f, fi) => renderFile(g.id, fi, f)).join('');
-  return `
-    <div class="group" id="group-${g.id}">
-      <div class="group-header" onclick="toggleGroup('${g.id}')">
-        <span class="group-id">${g.id}</span>
-        <span class="group-meta">${meta}</span>
-        <span class="group-savable">${g.savable_fmt}</span>
-        <span class="group-collapse">▾</span>
-      </div>
-      <div class="group-body" id="body-${g.id}">${filesHtml}</div>
-    </div>`;
-}
-
-function buildMeta(g) {
-  const n = g.files.length;
-  if (currentTab === 'archive') return `${n}개 · 공통 ${g.shared}개`;
-  if (currentTab === 'image' || currentTab === 'video') {
-    const label = g.category === 'exact' ? '완전동일' : '유사';
-    return `${n}개 · ${label}`;
-  }
-  // 일반: 해시 표시
-  const hash = g.files[0]?.hash || '';
-  return `${n}개${hash ? ' · ' + hash : ''}`;
-}
-
-function renderFile(gid, fi, f) {
-  const cls = f.keep === true ? 'keep' : (f.keep === false ? 'remove' : '');
-  const parts = f.path.split('/');
-  const name = parts.pop();
-  const dir = parts.join('/') || '/';
-  const extra = currentTab === 'archive' && f.shared ? ` · 공통 ${f.shared}개` : '';
-  return `
-    <div class="file-row ${cls}" id="file-${gid}-${fi}" tabindex="0" onclick="toggleKeep('${gid}',${fi})" onkeydown="handleFileKey(event,'${gid}',${fi})">
-      <div class="file-status"></div>
-      <div class="file-info">
-        <div class="file-name" title="${escHtml(f.path)}">${escHtml(name)}</div>
-        <div class="file-path" title="${escHtml(dir)}">${escHtml(dir)}</div>
-      </div>
-      <span class="file-size">${f.size_fmt}${extra}</span>
-      <button class="finder-btn" onclick="openFinder(event,'${escAttr(f.path)}')">열기</button>
-    </div>`;
-}
-
-function toggleGroup(gid) {
-  const body = document.getElementById('body-' + gid);
-  body.style.display = body.style.display === 'none' ? '' : 'none';
-}
-
-// ── 키보드 네비게이션 ──
-function handleFileKey(e, gid, fi) {
-  if (e.key === ' ') {
-    e.preventDefault();
-    toggleKeep(gid, fi);
-  } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    // 현재 탭의 모든 file-row를 순서대로 수집
-    const rows = [...document.querySelectorAll('#groups-container .file-row')];
-    const cur = document.getElementById(`file-${gid}-${fi}`);
-    const idx = rows.indexOf(cur);
-    const next = e.key === 'ArrowDown' ? rows[idx + 1] : rows[idx - 1];
-    if (next) { next.focus(); }
-  }
-}
-
-// ── Keep/Remove 토글 ──
-function toggleKeep(gid, fi) {
-  const groups = state[currentTab];
-  const g = groups.find(x => x.id === gid);
-  if (!g) return;
-  // 클릭한 파일만 KEEP/REMOVE 토글
-  g.files[fi].keep = !g.files[fi].keep;
-  const el = document.getElementById(`file-${gid}-${fi}`);
-  if (el) el.className = 'file-row ' + (g.files[fi].keep ? 'keep' : 'remove');
-  updateActionInfo();
-}
-
-// ── 필터 일괄 ──
-function applyFilter() {
-  filterText = document.getElementById('filter-input').value.trim();
-  renderGroups();
-}
-
-function clearFilter() {
-  filterText = '';
-  document.getElementById('filter-input').value = '';
-  renderGroups();
-}
-
-function bulkAction(keepValue) {
-  const q = filterText.toLowerCase();
-  const groups = state[currentTab] || [];
-  groups.forEach(g => {
-    const match = !q || g.files.some(f => f.path.toLowerCase().includes(q));
-    if (!match) return;
-    if (keepValue === 'keep') {
-      g.files.forEach(f => { f.keep = true; });
-    } else {
-      g.files.forEach(f => { f.keep = false; });
-    }
-  });
-  renderGroups();
-}
-
-function bulkKeep() { bulkAction('keep'); }
-function bulkRemove() { bulkAction('remove'); }
-
-// ── 파인더 ──
-async function openFinder(e, path) {
-  e.stopPropagation();
-  await fetch('/api/open-finder', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path}) });
-}
-
-// ── 세션 ZIP 불러오기 ──
-async function loadCsv() {
-  const path = document.getElementById('load-csv-input').value.trim();
-  if (!path) { alert('ZIP 파일 경로를 입력하세요'); return; }
-  try {
-    const r = await fetch('/api/load-csv', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ path })
-    });
-    if (!r.ok) { const e = await r.json(); alert(e.detail); return; }
-    const data = await r.json();
-    // 모든 탭 복원
-    for (const tab of data.tabs) {
-      // 서버 scan_state에서 최신 result 가져오기
-    }
-    const status = await (await fetch('/api/scan/status')).json();
-    if (status.result) {
-      state = status.result;
-    }
-    updateBadges();
-    renderGroups();
-    const summary = data.tabs.map(t => `${t}:${data.counts[t]}그룹`).join(' / ');
-    setStatus(`ZIP 불러오기 완료 — ${summary}`);
-    setHeaderStatus('ZIP 로드');
-  } catch(e) { alert('불러오기 실패: ' + e); }
-}
-
-// ── 세션 ZIP 저장 ──
-async function saveCsv() {
-  const hasData = Object.values(state).some(g => g.length > 0);
-  if (!hasData) { alert('저장할 데이터가 없습니다'); return; }
-  const r = await fetch('/api/save-csv', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ state })
-  });
-  if (!r.ok) { const e = await r.json(); alert(e.detail); return; }
-  const data = await r.json();
-  setStatus(`ZIP 저장 완료: ${data.filename}`);
-}
-
-// ── 삭제 ──
-function confirmDelete(all) {
-  const groups = state[currentTab] || [];
-  let targets;
-  if (all) {
-    targets = groups.flatMap(g => g.files.filter(f => !f.keep).map(f => f.path));
-  } else {
-    // 필터된 그룹 중 remove 파일
-    targets = filteredGroups().flatMap(g => g.files.filter(f => !f.keep).map(f => f.path));
-  }
-  if (!targets.length) { alert('삭제할 파일이 없습니다'); return; }
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal">
-      <h2>삭제 확인</h2>
-      <p>${targets.length}개 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</p>
-      <div style="max-height:120px;overflow-y:auto;font-size:10px;color:var(--text2);margin-bottom:12px">
-        ${targets.map(p => `<div>${escHtml(p)}</div>`).join('')}
-      </div>
-      <div class="modal-btns">
-        <button class="action-btn" onclick="this.closest('.modal-overlay').remove()">취소</button>
-        <button class="action-btn danger" onclick="doDelete(${JSON.stringify(targets).replace(/</g,'&lt;')}, this)">삭제</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  // targets를 클로저로 전달
-  overlay.querySelector('.action-btn.danger').addEventListener('click', function() {
-    overlay.remove();
-    executeDelete(targets);
-  });
-  overlay.querySelector('.action-btn:not(.danger)').addEventListener('click', () => overlay.remove());
-  // innerHTML onclick 제거
-  overlay.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
-}
-
-async function executeDelete(targets) {
-  setStatus('삭제 중...');
-  const r = await fetch('/api/delete', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ paths: targets })
-  });
-  const data = await r.json();
-  // 삭제된 파일을 모든 탭에서 제거
-  const deletedSet = new Set(data.deleted);
-  for (const tab of ['regular', 'image', 'video', 'archive']) {
-    state[tab] = (state[tab] || [])
-      .map(g => ({ ...g, files: g.files.filter(f => !deletedSet.has(f.path)) }))
-      .filter(g => g.files.length > 1);
-  }
-  updateBadges();
-  renderGroups();
-  const msg = `삭제 완료: ${data.deleted.length}개` + (data.errors.length ? ` / 오류: ${data.errors.length}개` : '');
-  setStatus(msg);
-}
-
-// ── 파일 존재 확인 ──
-async function checkFiles() {
-  setStatus('파일 존재 확인 중...');
-  const r = await fetch('/api/check-files', { method: 'POST' });
-  if (!r.ok) { const e = await r.json(); alert(e.detail); return; }
-  const data = await r.json();
-  // 서버 최신 result 반영
-  const status = await (await fetch('/api/scan/status')).json();
-  if (status.result) { state = status.result; }
-  updateBadges();
-  renderGroups();
-  if (data.count === 0) {
-    setStatus('확인 완료 — 모든 파일이 존재합니다');
-  } else {
-    setStatus(`확인 완료 — ${data.count}개 없는 파일 제거됨`);
-  }
-}
-
-// ── 유틸 ──
-function updateActionInfo() {
-  const groups = state[currentTab] || [];
-  const removeCount = groups.flatMap(g => g.files.filter(f => !f.keep)).length;
-  const totalGroups = groups.length;
-  document.getElementById('action-info').textContent = `${totalGroups}그룹 · REMOVE ${removeCount}개`;
-}
-
-function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
-function setHeaderStatus(msg) { document.getElementById('header-status').textContent = msg; }
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/\\/g,'\\\\'); }
-</script>
+<script src="/static/app.js"></script>
 </body>
 </html>"""
 

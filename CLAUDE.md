@@ -62,6 +62,14 @@ Obsidian이 실행 중이면 CLI를 우선 사용한다. 닫혀 있으면 폴백
 | Obsidian 실행 중 | `obsidian read/write/append/tasks` |
 | Obsidian 닫혀 있음 | Read / Edit / Write 툴로 직접 파일 접근 |
 
+### tasks-inbox 태스크 등록
+
+태스크 추가 시 prefix는 **반드시 프로젝트 디렉토리명**을 사용한다. 스크립트·컴포넌트명 사용 금지.
+
+```bash
+obsidian append path="tasks-inbox.md" content="- [ ] [project/utils-project] 할 일 내용 📅 YYYY-MM-DD"
+```
+
 ---
 
 ## 세션 시작 순서
@@ -78,10 +86,16 @@ Obsidian이 실행 중이면 CLI를 우선 사용한다. 닫혀 있으면 폴백
 ```
 utils-project/
 ├── duplicate_finder.py        # 메인 스크립트 — 중복/유사 파일 탐지 CLI
+├── dup_web.py                 # FastAPI 웹 UI 서버 (uvicorn으로 실행)
 ├── CLAUDE.md                  # 이 파일
 ├── AGENTS.md                  # Codex 환경용 에이전트 지침
+├── BACKLOG.md                 # 기능 백로그
 ├── results.md                 # 성능 측정 결과 기록
 ├── .pdca-state.json           # 현재 PDCA 사이클 상태
+├── static/
+│   ├── app.js                 # 웹 UI 프론트엔드 (VirtualScroller, TabCache 등)
+│   ├── style.css              # 웹 UI 스타일 (라이트/다크 테마)
+│   └── delete-log/            # 삭제 이력 JSON (YYYY-MM-DD.json)
 ├── docs/
 │   ├── 01-plan/features/      # Plan 문서
 │   ├── 02-design/features/    # Design 문서

@@ -113,6 +113,7 @@ import json
 import argparse
 import subprocess
 import threading
+import fnmatch
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from collections import defaultdict
@@ -484,9 +485,10 @@ def extract_tar_entries(filepath: str) -> list[dict]:
 # ──────────────────────────────────────────────
 # 파일 탐색
 # ──────────────────────────────────────────────
-def collect_files(root: str, progress_cb=None) -> list[dict]:
+def collect_files(root: str, progress_cb=None, exclude_patterns: list[str] | None = None) -> list[dict]:
     """디렉토리 재귀 탐색으로 파일 목록 수집"""
     files = []
+    _excludes = exclude_patterns or []
 
     print(f"[탐색 시작] {root}")
     count = 0
@@ -502,6 +504,11 @@ def collect_files(root: str, progress_cb=None) -> list[dict]:
                 continue
 
             filepath = os.path.join(dirpath, filename)
+            if _excludes and any(
+                fnmatch.fnmatch(filename, p) or fnmatch.fnmatch(filepath, p)
+                for p in _excludes
+            ):
+                continue
             try:
                 st = os.stat(filepath)
                 size = st.st_size
