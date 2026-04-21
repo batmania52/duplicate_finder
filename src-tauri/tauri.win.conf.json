@@ -6,15 +6,7 @@
     "frontendDist": "../static"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Dup Finder",
-        "width": 1280,
-        "height": 800,
-        "resizable": true,
-        "url": "http://127.0.0.1:8765/"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
