@@ -126,7 +126,7 @@ utils-project/
 
 | OS | 명령어 |
 |----|--------|
-| macOS | `cd src-tauri && cargo tauri build --target aarch64-apple-darwin` |
+| macOS | `cd src-tauri && cargo tauri build --target aarch64-apple-darwin --config tauri.mac.conf.json` |
 | Windows | `cd src-tauri && $env:RC="C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/rc.exe"` → `cargo tauri build --target x86_64-pc-windows-msvc --config tauri.win.conf.json` |
 
 **Windows 주의사항**:
