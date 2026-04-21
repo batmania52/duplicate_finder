@@ -35,7 +35,7 @@ fn file_created(path: &Path) -> Option<String> {
     Some(dt.format("%Y-%m-%dT%H:%M:%S").to_string())
 }
 
-pub fn find_duplicates(files: &[std::path::PathBuf], log_tx: Option<&crate::LogSender>) -> Vec<Group> {
+pub fn find_duplicates(files: &[std::path::PathBuf], log_tx: Option<&crate::LogSender>, cancel: Option<&tokio_util::sync::CancellationToken>) -> Vec<Group> {
     // 크기 기준 1차 필터 (같은 크기끼리만 해시)
     let mut by_size: HashMap<u64, Vec<&std::path::PathBuf>> = HashMap::new();
     for f in files {
@@ -58,6 +58,7 @@ pub fn find_duplicates(files: &[std::path::PathBuf], log_tx: Option<&crate::LogS
     let hashed: Vec<(String, &std::path::PathBuf)> = candidates
         .par_iter()
         .filter_map(|p| {
+            if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
             let result = hash_file(p).map(|h| (h, *p));
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {

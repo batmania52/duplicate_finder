@@ -65,6 +65,8 @@ pub struct ScanOptions {
     pub min_overlap: u32,
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub num_threads: usize,
 }
 
 fn default_phash_exact() -> u32 { 0 }

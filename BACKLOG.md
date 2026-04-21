@@ -26,20 +26,23 @@
 
 ## 안전성
 
-- [ ] 삭제 전 휴지통 이동 옵션 — macOS: `trash`, Linux: `gio trash`
 - [x] 삭제 이력 로그 파일 저장 — 언제 무엇을 삭제했는지 기록
 
 ## 성능
 
 - [ ] CSV 캐시 기반 해시 스킵 — 이전 ZIP의 path + size 일치 시 hash/phash/vhash 재계산 생략
 - [x] 탭 전환 성능 개선 — VirtualScroller(뷰포트 기준 DOM 최소화) + TabCache 적용. 2만 개 이상 그룹 대응
+- [ ] vhash 양방향 비교 — 현재 i→j 단방향이라 파일 순서에 따라 탐지 결과가 달라짐. min(i→j, j→i) 방식으로 변경 시 부분 포함(긴 영상의 일부인 짧은 영상) 및 화질 차이 케이스 탐지율 향상, 순서 의존성 제거. 사용자가 직접 선택하는 구조라 false positive 허용 가능.
+- [ ] vhash ffmpeg seek + 동적 샘플링 — 영상 길이에 따라 seek 여부와 프레임 수를 동적 결정. 5분 미만: seek 없이 순차 디코딩, 5~30분: seek 적용, 30분+: seek + 프레임 수 자동 증가. seek은 키프레임 단위라 목표 위치 근처에서 수십 프레임 추가 디코딩 필요. 긴 영상에서 전체 디코딩 대비 대폭 속도 향상.
 
 ## 기능
 
 - [x] 열기 버튼 OS 분기 — macOS: `open -R`, Windows: `explorer /select,`, Linux: `xdg-open`
 - [x] 그룹 내 원본 추천 — 경로 깊이 + 복사 이름 패턴 기준으로 KEEP 후보 뱃지 표시
 - [x] 스캔 제외 패턴 — 고급 옵션에 exclude glob 패턴 입력 추가
+- [ ] 제외 패턴 특수 키워드 — glob으로 표현 불가능한 조건을 예약어로 지원. 키워드 없음: 파일+디렉토리 둘 다 제외 (현재 동작 유지). `file:이름`: 파일만 제외. `dir:이름`: 디렉토리만 제외. `!no-ext`: 확장자 없는 파일 제외. collector.rs에서 키워드 감지 후 별도 처리.
 - [x] 아카이브 탭 압축파일 내부 파일 수 표시 — 그룹 헤더에 각 압축파일이 포함한 파일 수 표시
+- [ ] 그룹 내 일괄 KEEP/REMOVE 버튼 — 그룹 헤더에 "전체 KEEP" / "전체 REMOVE" 버튼 추가. 해당 그룹의 모든 파일을 일괄 토글.
 - [x] 파일 존재 확인 로그 간소화 — "확인 시작 → 완료 (없는 파일 N개)" 요약만 출력
 
 ## 버그 수정
@@ -48,9 +51,17 @@
 - [x] 열기 버튼 특수문자/공백 포함 경로 동작 안 함 — data-path 방식으로 교체
 - [x] zip_entry 삭제 시 건너뜀 처리
 
+## 분석 / 검증
+
+- [x] Python vs Rust 정량 비교 스크립트 — 동일 경로 스캔 후 중복 그룹 수·성능 비교 (`compare_results.py`)
+
+## 캐시
+
+- [ ] 해시 캐시 저장/불러오기 — 스캔 시작 전 캐시 파일 지정 가능. `path|size|mtime` 키로 파일별 독립 무효화, 변경된 파일만 재계산. 고급 옵션에 캐시 경로 입력 + 📂 다이얼로그 + 스캔 후 자동 저장 옵션. `ScanOptions`에 `cache_path`, `cache_auto_save` 추가. 캐시 항목: 일반=`hash`, 이미지=`hash+phash`, 영상=`vhash_frames`. atomic write(`cache.json.tmp` → rename)로 크래시 시 이전 캐시 보존. 준실시간 플러시: 각 스레드가 로컬 배치로 모아서 100개마다 또는 30초마다 merge → flush (Mutex 경합 없이 `par_iter` 와 호환). 단계 완료 시 추가 플러시.
+
 ## 추후 구현
 
-- [ ] 스캔 진행률 게이지 — SSE(Server-Sent Events) 또는 WebSocket으로 폴링 제거. 텍스트 로그 대신 단계별 프로그레스 바로 표시. Windows WebView2 폴링 스로틀링 문제 근본 해결
+- [x] 스캔 진행률 게이지 — SSE(Server-Sent Events) 또는 WebSocket으로 폴링 제거. 텍스트 로그 대신 단계별 프로그레스 바로 표시. Windows WebView2 폴링 스로틀링 문제 근본 해결
 
 
 

@@ -92,8 +92,14 @@ utils-project/
 ├── BACKLOG.md                 # 기능 백로그
 ├── results.md                 # 성능 측정 결과 기록
 ├── .pdca-state.json           # 현재 PDCA 사이클 상태
+├── MANUAL.md                  # 일반 사용자 한국어 매뉴얼
 ├── static/
-│   ├── app.js                 # 웹 UI 프론트엔드 (rust-embed로 바이너리 내장)
+│   ├── app.js                 # 웹 UI 진입점 (rust-embed로 바이너리 내장)
+│   ├── scan-path.js           # 경로 행 UI + 폴더 다이얼로그
+│   ├── progress.js            # 진행 카운터 + 게이지 업데이트
+│   ├── stats.js               # 타입별 통계 패널 + SVG 도넛 차트
+│   ├── diff-view.js           # 이미지/영상 비교 모달
+│   ├── preset.js              # 프리셋 저장/불러오기
 │   ├── style.css              # 웹 UI 스타일 (라이트/다크 테마)
 │   └── delete-log/            # 삭제 이력 JSON (YYYY-MM-DD.json)
 ├── src-tauri/                 # Tauri + Rust 앱 (메인)

@@ -132,6 +132,7 @@ pub fn find_similar_images(
     exact_threshold: u32,
     similar_threshold: u32,
     log_tx: Option<&crate::LogSender>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> Vec<Group> {
     let total = files.len();
     let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -140,6 +141,7 @@ pub fn find_similar_images(
     let hashed: Vec<(u64, &std::path::PathBuf)> = files
         .par_iter()
         .filter_map(|p| {
+            if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
             let result = compute_phash(p).map(|h| (h, p));
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {

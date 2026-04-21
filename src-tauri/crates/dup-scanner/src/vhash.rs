@@ -123,6 +123,7 @@ pub fn find_similar_videos(
     exact_threshold: f32,
     similar_threshold: f32,
     log_tx: Option<&crate::LogSender>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> Vec<Group> {
     if files.is_empty() {
         return Vec::new();
@@ -134,6 +135,7 @@ pub fn find_similar_videos(
     let hashed: Vec<(Vec<u64>, &std::path::PathBuf)> = files
         .par_iter()
         .filter_map(|p| {
+            if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
             let result = extract_frame_hashes(p, n_frames).ok().map(|h| (h, p));
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {

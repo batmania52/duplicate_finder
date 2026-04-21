@@ -215,6 +215,7 @@ async function startScan() {
     min_arc_files: iv('opt-min-arc-files'),
     exclude_patterns: (document.getElementById('opt-exclude-patterns')?.value || '')
       .split('\n').map(s => s.trim()).filter(Boolean),
+    num_threads: parseInt(document.getElementById('opt-threads')?.value || '0', 10),
   };
 
   try {
@@ -743,6 +744,10 @@ function updateActionInfo() {
   const savable = removeBytes > 0 ? ` · ${fmtSize(removeBytes)} 절약 예정` : '';
   document.getElementById('action-info').textContent =
     `${totalGroups}그룹 · REMOVE ${removeCount}개${savable}`;
+}
+
+function updateThreadsLabel(val) {
+  document.getElementById('opt-threads-label').textContent = val === '0' ? '자동' : `${val}개`;
 }
 
 function setStatus(msg) {

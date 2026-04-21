@@ -29,6 +29,8 @@ pub struct ScanRequest {
     pub min_overlap: u32,
     #[serde(default)]
     pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub num_threads: usize,
 }
 
 fn default_phash_exact() -> u32 { 0 }
@@ -82,6 +84,7 @@ pub async fn api_scan(
         vhash_similar: req.vhash_similar,
         min_overlap: req.min_overlap,
         exclude_patterns: req.exclude_patterns,
+        num_threads: req.num_threads,
     };
 
     let state_clone = state.clone();

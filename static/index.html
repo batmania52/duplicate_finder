@@ -56,6 +56,10 @@
               <span style="flex:1">압축 최소 내부 파일 수</span>
               <input type="number" id="opt-min-arc-files" value="0" min="0" title="0=제한없음" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
             </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">스레드 수 <span id="opt-threads-label" style="color:var(--accent)">자동</span></span>
+              <input type="range" id="opt-threads" min="0" max="16" value="0" style="width:80px;accent-color:var(--accent)" oninput="updateThreadsLabel(this.value)">
+            </div>
             <div style="display:flex;flex-direction:column;gap:3px">
               <span>제외 패턴 (줄바꿈, fnmatch 형식)</span>
               <textarea id="opt-exclude-patterns" rows="3" placeholder="*.tmp&#10;.DS_Store&#10;**/Thumbs.db" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font:inherit;font-size:11px;resize:vertical"></textarea>

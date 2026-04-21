@@ -17,7 +17,16 @@ pub async fn run_scan(
     log_tx: LogSender,
     cancel: CancellationToken,
 ) -> anyhow::Result<ScanResult> {
-    let _ = log_tx.send("파일 목록 수집 중...".to_string());
+    let num_threads = if options.num_threads > 0 {
+        options.num_threads
+    } else {
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
+    };
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+        .ok();
+    let _ = log_tx.send(format!("파일 목록 수집 중... (스레드 {}개)", num_threads));
 
     let files = tokio::task::spawn_blocking({
         let paths = options.paths.clone();
@@ -54,7 +63,8 @@ pub async fn run_scan(
     let regular = {
         let files = regular_files.clone();
         let tx = log_tx.clone();
-        tokio::task::spawn_blocking(move || hash::find_duplicates(&files, Some(&tx))).await?
+        let c = cancel.clone();
+        tokio::task::spawn_blocking(move || hash::find_duplicates(&files, Some(&tx), Some(&c))).await?
     };
     let _ = log_tx.send(format!("해시 중복 그룹: {}개", regular.len()));
 
@@ -69,8 +79,9 @@ pub async fn run_scan(
         let exact = options.phash_exact;
         let similar = options.phash_similar;
         let tx = log_tx.clone();
+        let c = cancel.clone();
         let result = tokio::task::spawn_blocking(move || {
-            phash::find_similar_images(&image_files, exact, similar, Some(&tx))
+            phash::find_similar_images(&image_files, exact, similar, Some(&tx), Some(&c))
         }).await?;
         let _ = log_tx.send(format!("이미지 유사 그룹: {}개", result.len()));
         result
@@ -90,8 +101,9 @@ pub async fn run_scan(
         let exact = options.vhash_exact;
         let similar = options.vhash_similar;
         let tx = log_tx.clone();
+        let c = cancel.clone();
         let result = tokio::task::spawn_blocking(move || {
-            vhash::find_similar_videos(&video_files, n_frames, exact, similar, Some(&tx))
+            vhash::find_similar_videos(&video_files, n_frames, exact, similar, Some(&tx), Some(&c))
         }).await?;
         let _ = log_tx.send(format!("영상 유사 그룹: {}개", result.len()));
         result
