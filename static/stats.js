@@ -15,6 +15,13 @@ const TYPE_LABELS = {
   other:   '기타',
 };
 
+function toggleStatsPanel() {
+  const panel = document.getElementById('stats-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+}
+
 function buildStatsPanel(state) {
   const panel = document.getElementById('stats-panel');
   if (!panel) return;

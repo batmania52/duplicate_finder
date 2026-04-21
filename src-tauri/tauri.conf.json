@@ -6,15 +6,7 @@
     "frontendDist": "../static"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Dup Finder",
-        "width": 1280,
-        "height": 800,
-        "resizable": true,
-        "url": "http://127.0.0.1:8765/"
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }
@@ -28,6 +20,9 @@
       "icons/32x32.png",
       "icons/128x128.png"
     ],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser"

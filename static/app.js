@@ -95,7 +95,9 @@ class VirtualScroller {
       const meta = buildMeta(g);
       const originIdx = getOriginIndex(g.files);
       const filesHtml = isOpen ? g.files.map((f, fi) => renderFile(g.id, fi, f, fi === originIdx)).join('') : '';
-      const diffBtn = (currentTab === 'image')
+      const showDiff = currentTab === 'image' || currentTab === 'video' ||
+        (currentTab === 'regular' && g.files.some(f => isImageFile(f.path) || isVideoFile(f.path)));
+      const diffBtn = showDiff
         ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
         : '';
       const bulkBtns = `<button class="bulk-btn" onclick="event.stopPropagation();bulkKeep('${g.id}')">전체 KEEP</button><button class="bulk-btn" onclick="event.stopPropagation();bulkRemove('${g.id}')">전체 REMOVE</button>`;
@@ -217,6 +219,9 @@ async function startScan() {
     exclude_patterns: (document.getElementById('opt-exclude-patterns')?.value || '')
       .split('\n').map(s => s.trim()).filter(Boolean),
     num_threads: parseInt(document.getElementById('opt-threads')?.value || '0', 10),
+    min_size_kb: iv('opt-min-size-kb'),
+    check_inode: document.getElementById('opt-check-inode')?.checked ?? false,
+    partial_hash_kb: iv('opt-partial-hash-kb'),
   };
 
   try {
@@ -419,7 +424,9 @@ function renderGroup(g) {
   const meta = buildMeta(g);
   const originIdx = getOriginIndex(g.files);
   const filesHtml = g.files.map((f, fi) => renderFile(g.id, fi, f, fi === originIdx)).join('');
-  const diffBtn = (currentTab === 'image')
+  const showDiff = currentTab === 'image' || currentTab === 'video' ||
+    (currentTab === 'regular' && g.files.some(f => isImageFile(f.path) || isVideoFile(f.path)));
+  const diffBtn = showDiff
     ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
     : '';
   const bulkBtns = `<button class="bulk-btn" onclick="event.stopPropagation();bulkKeep('${g.id}')">전체 KEEP</button><button class="bulk-btn" onclick="event.stopPropagation();bulkRemove('${g.id}')">전체 REMOVE</button>`;

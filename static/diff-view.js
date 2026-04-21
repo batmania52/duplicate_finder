@@ -1,39 +1,58 @@
-// diff-view.js — 이미지 그룹 내 diff 뷰 모달
+// diff-view.js — 이미지·영상 그룹 diff 뷰 모달
 
 const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','bmp','webp','tiff','heic','avif']);
+const VIDEO_EXTS = new Set(['mp4','mkv','avi','mov','wmv','flv','webm','m4v','mpg','mpeg','ts','mts','m2ts']);
 
 function isImageFile(path) {
   const ext = (path || '').split('.').pop().toLowerCase();
   return IMAGE_EXTS.has(ext);
 }
 
+function isVideoFile(path) {
+  const ext = (path || '').split('.').pop().toLowerCase();
+  return VIDEO_EXTS.has(ext);
+}
+
 function openDiffModal(files) {
   const existing = document.getElementById('diff-modal');
   if (existing) existing.remove();
 
-  const imgFiles = files.filter(f => isImageFile(f.path));
-  if (imgFiles.length < 2) return;
+  const mediaFiles = files.filter(f => isImageFile(f.path) || isVideoFile(f.path));
+  if (mediaFiles.length < 2) return;
+
+  const isVideo = mediaFiles.some(f => isVideoFile(f.path));
+  const title = isVideo ? `영상 비교 (${mediaFiles.length}개)` : `이미지 비교 (${mediaFiles.length}개)`;
 
   const modal = document.createElement('div');
   modal.id = 'diff-modal';
   modal.className = 'modal-overlay';
 
-  const items = imgFiles.map((f, i) => `
-    <div class="diff-item">
-      <img src="/api/file?path=${encodeURIComponent(f.path)}"
-           alt="${escHtml(f.path)}"
-           class="diff-img"
-           loading="lazy"
-           onerror="this.style.display='none'">
+  const items = mediaFiles.map(f => {
+    const media = isVideoFile(f.path)
+      ? `<video src="/api/file?path=${encodeURIComponent(f.path)}"
+               class="diff-img"
+               controls
+               preload="metadata"
+               onerror="this.nextSibling&&(this.nextSibling.textContent='재생 오류: '+this.error?.code+' '+this.error?.message);console.error('video error',this.error,this.src)"></video>`
+      : `<img src="/api/file?path=${encodeURIComponent(f.path)}"
+              alt="${escHtml(f.path)}"
+              class="diff-img"
+              loading="lazy"
+              onerror="this.style.display='none'">`;
+    const itemClass = isVideoFile(f.path) ? 'diff-item video-item' : 'diff-item';
+    return `
+    <div class="${itemClass}">
+      ${media}
       <div class="diff-caption" title="${escHtml(f.path)}">${escHtml(shortPath(f.path))}</div>
       <div class="diff-size">${fmtBytes(f.size)}</div>
       <div class="diff-meta">${f.created ? f.created.replace('T', ' ') : '-'}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   modal.innerHTML = `
     <div class="modal diff-modal-box">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <h2>이미지 비교 (${imgFiles.length}개)</h2>
+        <h2>${title}</h2>
         <button class="action-btn" onclick="closeDiffModal()">✕ 닫기</button>
       </div>
       <div class="diff-grid">${items}</div>

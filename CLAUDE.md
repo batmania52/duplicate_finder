@@ -18,7 +18,8 @@ obsidian files folder="share/project/utils-project/handoff"
 obsidian read path="share/project/utils-project/handoff/<파일명>"
 ```
 
-파일이 있으면 이전 세션 요약을 간략히 알린다.
+파일이 있으면 이전 세션 요약을 간략히 알린다.  
+`[project/*]` 태스크가 있으면 tasks-inbox와 대조한다 — inbox에 없으면 등록, 있으면 완료 여부 확인 후 알린다.  
 파일이 없으면 별도 언급 없이 진행한다.
 
 > 핸드오프 파일 생성: `/session-close` 스킬 실행

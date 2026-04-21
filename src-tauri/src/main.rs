@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use std::net::TcpListener;
 
 fn pick_free_port() -> u16 {
@@ -16,7 +16,6 @@ fn main() {
 
     let port = pick_free_port();
 
-    // 서버가 완전히 뜰 때까지 대기
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -28,15 +27,21 @@ fn main() {
         });
     });
 
-    // 서버 ready 신호 대기 (최대 5초)
     let _ = rx.recv_timeout(std::time::Duration::from_secs(5));
 
     let url = format!("http://127.0.0.1:{}/", port);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            let window = app.get_webview_window("main").unwrap();
-            let _ = window.navigate(url.parse().unwrap());
+            WebviewWindowBuilder::new(
+                app,
+                "main",
+                WebviewUrl::External(url.parse().unwrap()),
+            )
+            .title("Dup Finder")
+            .inner_size(1280.0, 800.0)
+            .resizable(true)
+            .build()?;
             Ok(())
         })
         .run(tauri::generate_context!())

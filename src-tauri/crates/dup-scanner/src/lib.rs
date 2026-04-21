@@ -72,7 +72,10 @@ pub async fn run_scan(
         let files = regular_files.clone();
         let tx = log_tx.clone();
         let c = cancel.clone();
-        tokio::task::spawn_blocking(move || hash::find_duplicates(&files, Some(&tx), Some(&c))).await?
+        let min_size_kb = options.min_size_kb;
+        let check_inode = options.check_inode;
+        let partial_hash_kb = options.partial_hash_kb;
+        tokio::task::spawn_blocking(move || hash::find_duplicates_opts(&files, Some(&tx), Some(&c), min_size_kb, check_inode, partial_hash_kb)).await?
     };
     regular.retain(|g| !is_same_zip_only_group(g));
     let _ = log_tx.send(format!("해시 중복 그룹: {}개", regular.len()));

@@ -67,7 +67,15 @@ pub struct ScanOptions {
     pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub num_threads: usize,
+    #[serde(default)]
+    pub min_size_kb: u64,
+    #[serde(default)]
+    pub check_inode: bool,
+    #[serde(default = "default_partial_hash_kb")]
+    pub partial_hash_kb: u64,
 }
+
+fn default_partial_hash_kb() -> u64 { 64 }
 
 fn default_phash_exact() -> u32 { 0 }
 fn default_phash_similar() -> u32 { 10 }

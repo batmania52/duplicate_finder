@@ -60,6 +60,17 @@
               <span style="flex:1">스레드 수 <span id="opt-threads-label" style="color:var(--accent)">자동</span></span>
               <input type="range" id="opt-threads" min="0" max="16" value="0" style="width:80px;accent-color:var(--accent)" oninput="updateThreadsLabel(this.value)">
             </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">최소 파일 크기 (KB, 0=제한없음)</span>
+              <input type="number" id="opt-min-size-kb" value="0" min="0" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
+            <div>
+              <label><input type="checkbox" id="opt-check-inode"> 하드링크 제외 (inode, macOS/Linux)</label>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="flex:1">부분 해시 크기 (KB, 0=비활성)</span>
+              <input type="number" id="opt-partial-hash-kb" value="64" min="0" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
+            </div>
             <div style="display:flex;flex-direction:column;gap:3px">
               <span>제외 패턴 (줄바꿈, fnmatch 형식)</span>
               <textarea id="opt-exclude-patterns" rows="3" placeholder="*.tmp&#10;.DS_Store&#10;**/Thumbs.db" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font:inherit;font-size:11px;resize:vertical"></textarea>
@@ -103,6 +114,7 @@
         <button class="filter-btn" onclick="bulkKeep()">필터 내 일괄 KEEP</button>
         <button class="filter-btn" onclick="bulkRemove()">필터 내 일괄 REMOVE</button>
         <button class="filter-btn" onclick="clearFilter()">초기화</button>
+        <button class="filter-btn" id="stats-toggle-btn" onclick="toggleStatsPanel()" style="margin-left:auto">통계</button>
       </div>
       <div id="type-filter-bar" style="padding:4px 8px;gap:4px;align-items:center;font-size:12px;border-bottom:1px solid var(--border);display:none">
         <span style="color:var(--text2);margin-right:4px">보기:</span>
