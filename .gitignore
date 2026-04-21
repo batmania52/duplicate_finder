@@ -14,3 +14,4 @@ docs/
 src-tauri/target/
 src-tauri/ffmpeg-dlls/
 src-tauri/dlls/
+src-tauri/resources/macos/

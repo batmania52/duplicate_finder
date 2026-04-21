@@ -278,9 +278,36 @@ fn is_video_ext(path: &std::path::Path) -> bool {
     )
 }
 
+fn find_ffmpeg_bin(name: &str) -> Option<std::path::PathBuf> {
+    // 1순위: 번들 내장 바이너리 (tauri resources)
+    if let Ok(exe) = std::env::current_exe() {
+        // macOS: Contents/MacOS/dup-finder → Contents/Resources/ffmpeg
+        // Windows: 실행파일 옆에 ffmpeg.exe
+        let candidates = [
+            exe.parent()?.join(name),
+            exe.parent()?.parent()?.join("Resources").join(name),
+        ];
+        for p in &candidates {
+            if p.exists() {
+                return Some(p.clone());
+            }
+        }
+    }
+    // 2순위: 시스템 PATH (dev 환경)
+    let system = [
+        format!("/opt/homebrew/bin/{}", name),
+        format!("/usr/local/bin/{}", name),
+        format!("/usr/bin/{}", name),
+        format!("C:\\ffmpeg\\bin\\{}.exe", name),
+    ];
+    system.into_iter().map(std::path::PathBuf::from).find(|p| p.exists())
+}
+
 /// ffprobe로 실제 컨테이너 포맷 감지 — WKWebView가 재생 불가능한 포맷 판단
 fn needs_remux(path: &std::path::Path) -> bool {
-    let Ok(out) = std::process::Command::new("ffprobe")
+    let Some(ffprobe) = find_ffmpeg_bin("ffprobe") else { return false; };
+
+    let Ok(out) = std::process::Command::new(ffprobe)
         .args([
             "-v", "error",
             "-show_entries", "format=format_name",
@@ -314,7 +341,8 @@ fn remux_to_mp4(src: &std::path::Path) -> Option<std::path::PathBuf> {
         return Some(out_path);
     }
 
-    let status = std::process::Command::new("ffmpeg")
+    let ffmpeg = find_ffmpeg_bin("ffmpeg")?;
+    let status = std::process::Command::new(ffmpeg)
         .args([
             "-y", "-i", src.to_str()?,
             "-c", "copy",
