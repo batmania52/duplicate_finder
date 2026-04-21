@@ -281,11 +281,14 @@ fn is_video_ext(path: &std::path::Path) -> bool {
 fn find_ffmpeg_bin(name: &str) -> Option<std::path::PathBuf> {
     // 1순위: 번들 내장 바이너리 (tauri resources)
     if let Ok(exe) = std::env::current_exe() {
-        // macOS: Contents/MacOS/dup-finder → Contents/Resources/ffmpeg
-        // Windows: 실행파일 옆에 ffmpeg.exe
+        let exe_name = if cfg!(target_os = "windows") {
+            format!("{}.exe", name)
+        } else {
+            name.to_string()
+        };
         let candidates = [
-            exe.parent()?.join(name),
-            exe.parent()?.parent()?.join("Resources").join(name),
+            exe.parent()?.join(&exe_name),
+            exe.parent()?.parent()?.join("Resources").join(&exe_name),
         ];
         for p in &candidates {
             if p.exists() {
