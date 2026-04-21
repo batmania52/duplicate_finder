@@ -27,6 +27,7 @@ function openDiffModal(files) {
            onerror="this.style.display='none'">
       <div class="diff-caption" title="${escHtml(f.path)}">${escHtml(shortPath(f.path))}</div>
       <div class="diff-size">${fmtBytes(f.size)}</div>
+      <div class="diff-meta">${f.created ? f.created.replace('T', ' ') : '-'}</div>
     </div>`).join('');
 
   modal.innerHTML = `

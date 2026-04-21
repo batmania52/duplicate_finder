@@ -1,5 +1,6 @@
 pub mod model;
 pub mod collector;
+pub mod filter;
 pub mod hash;
 pub mod phash;
 pub mod vhash;
@@ -11,6 +12,13 @@ use crate::collector::{collect_files, is_image, is_video, is_archive};
 use crate::model::{ScanOptions, ScanResult};
 
 pub type LogSender = tokio::sync::mpsc::UnboundedSender<String>;
+
+fn is_same_zip_only_group(group: &crate::model::Group) -> bool {
+    if group.files.is_empty() { return false; }
+    if !group.files.iter().all(|f| f.path.contains("::")) { return false; }
+    let first_zip = group.files[0].path.split("::").next().unwrap_or("");
+    group.files.iter().all(|f| f.path.split("::").next().unwrap_or("") == first_zip)
+}
 
 pub async fn run_scan(
     options: ScanOptions,
@@ -60,12 +68,13 @@ pub async fn run_scan(
     // SHA-256 중복 탐지 — \r(flush) 후 단계 시작 메시지
     let _ = log_tx.send("\r".to_string());
     let _ = log_tx.send(format!("해시 중복 탐지 중... ({} 파일)", regular_files.len()));
-    let regular = {
+    let mut regular = {
         let files = regular_files.clone();
         let tx = log_tx.clone();
         let c = cancel.clone();
         tokio::task::spawn_blocking(move || hash::find_duplicates(&files, Some(&tx), Some(&c))).await?
     };
+    regular.retain(|g| !is_same_zip_only_group(g));
     let _ = log_tx.send(format!("해시 중복 그룹: {}개", regular.len()));
 
     if cancel.is_cancelled() {

@@ -45,6 +45,7 @@ function buildStatsPanel(state) {
 
   panel.innerHTML = `
     <div class="stats-inner">
+      <button onclick="document.getElementById('stats-panel').style.display='none'" style="position:absolute;top:6px;right:8px;background:none;border:none;color:var(--text2);font-size:14px;cursor:pointer;padding:2px 6px;line-height:1" title="닫기">✕</button>
       <div class="stats-donut">${buildDonut(counts, totalCount)}</div>
       <div class="stats-table">${buildTable(counts, sizes, totalCount, totalSize)}</div>
     </div>`;

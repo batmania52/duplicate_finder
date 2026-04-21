@@ -142,7 +142,7 @@ mod tests {
         std::fs::write(&p2, b"same content").unwrap();
         std::fs::write(&p3, b"different").unwrap();
 
-        let groups = find_duplicates(&[p1, p2, p3]);
+        let groups = find_duplicates(&[p1, p2, p3], None, None);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].files.len(), 2);
     }

@@ -98,13 +98,14 @@ class VirtualScroller {
       const diffBtn = (currentTab === 'image')
         ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
         : '';
+      const bulkBtns = `<button class="bulk-btn" onclick="event.stopPropagation();bulkKeep('${g.id}')">전체 KEEP</button><button class="bulk-btn" onclick="event.stopPropagation();bulkRemove('${g.id}')">전체 REMOVE</button>`;
       html.push(`
         <div class="group" id="group-${g.id}" style="position:absolute;left:8px;right:8px;top:${this._offsets[i] - 8}px">
           <div class="group-header" onclick="vsToggleGroup('${g.id}')">
             <span class="group-id">${g.id}</span>
             <span class="group-meta">${meta}</span>
             <span class="group-savable">${g.savable_fmt}</span>
-            ${diffBtn}
+            ${diffBtn}${bulkBtns}
             <span class="group-collapse">${isOpen ? '▴' : '▾'}</span>
           </div>
           <div class="group-body" id="body-${g.id}">${filesHtml}</div>
@@ -421,13 +422,14 @@ function renderGroup(g) {
   const diffBtn = (currentTab === 'image')
     ? `<button class="finder-btn" style="margin-right:4px" onclick="event.stopPropagation();openDiffModal(${JSON.stringify(g.files).replace(/"/g,'&quot;')})">비교</button>`
     : '';
+  const bulkBtns = `<button class="bulk-btn" onclick="event.stopPropagation();bulkKeep('${g.id}')">전체 KEEP</button><button class="bulk-btn" onclick="event.stopPropagation();bulkRemove('${g.id}')">전체 REMOVE</button>`;
   return `
     <div class="group" id="group-${g.id}">
       <div class="group-header" onclick="toggleGroup('${g.id}')">
         <span class="group-id">${g.id}</span>
         <span class="group-meta">${meta}</span>
         <span class="group-savable">${g.savable_fmt}</span>
-        ${diffBtn}
+        ${diffBtn}${bulkBtns}
         <span class="group-collapse">▾</span>
       </div>
       <div class="group-body" id="body-${g.id}">${filesHtml}</div>
@@ -519,6 +521,28 @@ function toggleKeep(gid, fi) {
   // 가상 스크롤: 해당 행만 클래스 교체 (리렌더 없이)
   const el = document.getElementById(`file-${gid}-${fi}`);
   if (el) el.className = 'file-row ' + (g.files[fi].keep ? 'keep' : 'remove');
+  updateActionInfo();
+}
+
+function bulkKeep(gid) {
+  const g = state[currentTab]?.find(x => x.id === gid);
+  if (!g) return;
+  g.files.forEach((f, fi) => {
+    f.keep = true;
+    const el = document.getElementById(`file-${gid}-${fi}`);
+    if (el) el.className = 'file-row keep';
+  });
+  updateActionInfo();
+}
+
+function bulkRemove(gid) {
+  const g = state[currentTab]?.find(x => x.id === gid);
+  if (!g) return;
+  g.files.forEach((f, fi) => {
+    f.keep = false;
+    const el = document.getElementById(`file-${gid}-${fi}`);
+    if (el) el.className = 'file-row remove';
+  });
   updateActionInfo();
 }
 
