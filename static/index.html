@@ -71,6 +71,14 @@
               <span style="flex:1">부분 해시 크기 (KB, 0=비활성)</span>
               <input type="number" id="opt-partial-hash-kb" value="64" min="0" style="width:52px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:2px 4px;font:inherit;text-align:right">
             </div>
+            <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
+              <div style="font-size:10px;color:var(--text2);margin-bottom:3px">해시 캐시 (자동 저장)</div>
+              <div style="display:flex;gap:4px;align-items:center">
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text2)" id="cache-path-label">자동 (문서 폴더)</span>
+                <button onclick="pickCacheFile('open')" title="기존 캐시 파일 불러오기" style="padding:2px 6px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;font:inherit;cursor:pointer;font-size:12px">📂</button>
+                <button onclick="clearCachePath()" title="자동 경로로 초기화" style="padding:2px 6px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:4px;font:inherit;cursor:pointer;font-size:12px">✕</button>
+              </div>
+            </div>
             <div style="display:flex;flex-direction:column;gap:3px">
               <span>제외 패턴 (줄바꿈, fnmatch 형식)</span>
               <textarea id="opt-exclude-patterns" rows="3" placeholder="*.tmp&#10;.DS_Store&#10;**/Thumbs.db" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:4px 6px;font:inherit;font-size:11px;resize:vertical"></textarea>

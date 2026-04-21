@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use sha2::{Digest, Sha256};
 use chrono::DateTime;
 use rayon::prelude::*;
+use crate::cache::{CacheEntry, HashCache};
 use crate::model::{FileEntry, Group, fmt_size};
 
 const CHUNK_SIZE: usize = 65536;
@@ -79,7 +81,7 @@ fn get_inode(path: &Path) -> Option<u64> {
 }
 
 pub fn find_duplicates(files: &[std::path::PathBuf], log_tx: Option<&crate::LogSender>, cancel: Option<&tokio_util::sync::CancellationToken>) -> Vec<Group> {
-    find_duplicates_opts(files, log_tx, cancel, 0, false, 64)
+    find_duplicates_opts(files, log_tx, cancel, 0, false, 64, None)
 }
 
 pub fn find_duplicates_opts(
@@ -89,6 +91,7 @@ pub fn find_duplicates_opts(
     min_size_kb: u64,
     check_inode: bool,
     partial_hash_kb: u64,
+    cache: Option<Arc<Mutex<HashCache>>>,
 ) -> Vec<Group> {
     let min_bytes = min_size_kb * 1024;
 
@@ -221,12 +224,34 @@ pub fn find_duplicates_opts(
         candidates.iter().copied().collect()
     };
 
-    // 3단계 (또는 단일): full SHA-256
-    let hashed: Vec<(String, &std::path::PathBuf)> = final_candidates
+    // 3단계 (또는 단일): full SHA-256 — 캐시 hit 시 재사용
+    let batch: Vec<(String, CacheEntry, &std::path::PathBuf)> = final_candidates
         .par_iter()
         .filter_map(|p| {
             if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
-            let result = hash_file(p).map(|h| (h, *p));
+            let cache_key = HashCache::cache_key(p);
+
+            // 캐시 hit 확인
+            if let (Some(key), Some(c)) = (&cache_key, &cache) {
+                if let Ok(guard) = c.lock() {
+                    if let Some(entry) = guard.get(key) {
+                        if let Some(h) = &entry.hash {
+                            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            if let Some(tx) = log_tx {
+                                if n % 200 == 0 || n == total {
+                                    let _ = tx.send(format!("\r해시 중복 탐지 중... ({} / {})", n, total));
+                                }
+                            }
+                            return Some((h.clone(), CacheEntry::default(), *p));
+                        }
+                    }
+                }
+            }
+
+            let result = hash_file(p).map(|h| {
+                let entry = CacheEntry { hash: Some(h.clone()), ..Default::default() };
+                (h, entry, *p)
+            });
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {
                 if n % 200 == 0 || n == total {
@@ -236,6 +261,28 @@ pub fn find_duplicates_opts(
             result
         })
         .collect();
+
+    // 캐시에 새 항목 batch merge
+    if let Some(c) = &cache {
+        let new_entries: Vec<(String, CacheEntry)> = batch
+            .iter()
+            .filter_map(|(_, entry, p)| {
+                if entry.hash.is_some() {
+                    HashCache::cache_key(p).map(|k| (k, entry.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !new_entries.is_empty() {
+            if let Ok(mut guard) = c.lock() {
+                guard.merge_batch(new_entries);
+                let _ = guard.flush_if_needed();
+            }
+        }
+    }
+
+    let hashed: Vec<(String, &std::path::PathBuf)> = batch.into_iter().map(|(h, _, p)| (h, p)).collect();
 
     // 해시 기준 그룹화
     let mut by_hash: HashMap<String, Vec<&std::path::PathBuf>> = HashMap::new();

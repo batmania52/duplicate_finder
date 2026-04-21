@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use image::imageops::FilterType;
 use rayon::prelude::*;
+use crate::cache::{CacheEntry, HashCache};
 use crate::model::{FileEntry, Group, fmt_size};
 
 const HASH_SIZE: u32 = 8; // 8x8 DCT → 64bit hash
@@ -134,15 +136,61 @@ pub fn find_similar_images(
     log_tx: Option<&crate::LogSender>,
     cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> Vec<Group> {
+    find_similar_images_cached(files, exact_threshold, similar_threshold, log_tx, cancel, None)
+}
+
+pub fn find_similar_images_cached(
+    files: &[std::path::PathBuf],
+    exact_threshold: u32,
+    similar_threshold: u32,
+    log_tx: Option<&crate::LogSender>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
+    cache: Option<Arc<Mutex<HashCache>>>,
+) -> Vec<Group> {
     let total = files.len();
     let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-    // 병렬 pHash 계산
+    // 병렬 pHash 계산 — 캐시 hit 시 재사용
     let hashed: Vec<(u64, &std::path::PathBuf)> = files
         .par_iter()
         .filter_map(|p| {
             if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
-            let result = compute_phash(p).map(|h| (h, p));
+
+            let cache_key = HashCache::cache_key(p);
+
+            // 캐시 hit 확인
+            if let (Some(key), Some(c)) = (&cache_key, &cache) {
+                if let Ok(guard) = c.lock() {
+                    if let Some(entry) = guard.get(key) {
+                        if let Some(phash_str) = &entry.phash {
+                            if let Ok(h) = u64::from_str_radix(phash_str, 16) {
+                                let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                                if let Some(tx) = log_tx {
+                                    if n % 100 == 0 || n == total {
+                                        let _ = tx.send(format!("\r이미지 유사도 분석 중... ({} / {})", n, total));
+                                    }
+                                }
+                                return Some((h, p));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let result = compute_phash(p).map(|h| {
+                // 캐시에 저장
+                if let (Some(key), Some(c)) = (&cache_key, &cache) {
+                    if let Ok(mut guard) = c.lock() {
+                        let entry = CacheEntry {
+                            phash: Some(format!("{:016x}", h)),
+                            ..Default::default()
+                        };
+                        guard.insert(key.clone(), entry);
+                        let _ = guard.flush_if_needed();
+                    }
+                }
+                (h, p)
+            });
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {
                 if n % 100 == 0 || n == total {

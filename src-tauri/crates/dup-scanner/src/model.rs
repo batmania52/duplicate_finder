@@ -73,9 +73,16 @@ pub struct ScanOptions {
     pub check_inode: bool,
     #[serde(default = "default_partial_hash_kb")]
     pub partial_hash_kb: u64,
+
+    // 항목 10: 캐시
+    #[serde(default)]
+    pub cache_path: Option<String>,
+    #[serde(default = "default_cache_auto_save")]
+    pub cache_auto_save: bool,
 }
 
 fn default_partial_hash_kb() -> u64 { 64 }
+fn default_cache_auto_save() -> bool { true }
 
 fn default_phash_exact() -> u32 { 0 }
 fn default_phash_similar() -> u32 { 10 }

@@ -222,6 +222,8 @@ async function startScan() {
     min_size_kb: iv('opt-min-size-kb'),
     check_inode: document.getElementById('opt-check-inode')?.checked ?? false,
     partial_hash_kb: iv('opt-partial-hash-kb'),
+    cache_path: window._cachePath || null,
+    cache_auto_save: true,
   };
 
   try {
@@ -789,3 +791,48 @@ function setStatus(msg) {
 function setHeaderStatus(msg) { document.getElementById('header-status').textContent = msg; }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s) { return String(s).replace(/'/g,"\\'").replace(/\\/g,'\\\\'); }
+
+// ── 캐시 ──
+window._cachePath = null;
+
+function updateCacheLabel() {
+  const label = document.getElementById('cache-path-label');
+  if (!label) return;
+  if (window._cachePath) {
+    const short = window._cachePath.length > 40
+      ? '…' + window._cachePath.slice(-38)
+      : window._cachePath;
+    label.textContent = short;
+    label.title = window._cachePath;
+  } else {
+    label.textContent = '자동 (문서 폴더)';
+    label.title = '스캔 시작 시 문서 폴더에 dup-cache-YYYYMMDDHHMMSS.json 자동 생성';
+  }
+}
+
+async function pickCacheFile(mode) {
+  try {
+    const r = await fetch('/api/pick-cache-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.path) {
+      window._cachePath = data.path;
+      updateCacheLabel();
+      // 캐시에 저장된 스캔 경로 자동 채우기
+      if (data.scan_paths && data.scan_paths.length > 0) {
+        setScanPaths(data.scan_paths);
+      }
+    }
+  } catch (e) {
+    console.error('캐시 파일 선택 오류:', e);
+  }
+}
+
+function clearCachePath() {
+  window._cachePath = null;
+  updateCacheLabel();
+}

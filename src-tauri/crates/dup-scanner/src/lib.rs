@@ -5,13 +5,45 @@ pub mod hash;
 pub mod phash;
 pub mod vhash;
 pub mod archive;
+pub mod cache;
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
+use crate::cache::HashCache;
 use crate::collector::{collect_files, is_image, is_video, is_archive};
 use crate::model::{ScanOptions, ScanResult};
 
 pub type LogSender = tokio::sync::mpsc::UnboundedSender<String>;
+
+/// cache_path 지정 시 그대로 사용, 미지정 시 문서 디렉토리에 타임스탬프 파일명 생성.
+fn resolve_cache_path(cache_path: Option<&str>) -> Option<std::path::PathBuf> {
+    if let Some(p) = cache_path {
+        return Some(std::path::PathBuf::from(p));
+    }
+    let docs = docs_dir()?;
+    let ts = chrono::Local::now().format("%Y%m%d%H%M%S");
+    Some(docs.join(format!("dup-cache-{}.json", ts)))
+}
+
+/// OS별 문서 디렉토리 반환.
+fn docs_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").ok()?;
+        return Some(std::path::PathBuf::from(home).join("Documents"));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let userprofile = std::env::var("USERPROFILE").ok()?;
+        return Some(std::path::PathBuf::from(userprofile).join("Documents"));
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let home = std::env::var("HOME").ok()?;
+        return Some(std::path::PathBuf::from(home).join("Documents"));
+    }
+}
 
 fn is_same_zip_only_group(group: &crate::model::Group) -> bool {
     if group.files.is_empty() { return false; }
@@ -48,6 +80,27 @@ pub async fn run_scan(
 
     let _ = log_tx.send(format!("총 {} 파일 수집 완료", files.len()));
 
+    // 캐시 초기화 — cache_auto_save=true(기본)이면 항상 활성화
+    // cache_path 미지정 시 문서 디렉토리에 타임스탬프 파일 자동 생성
+    let cache: Option<Arc<Mutex<HashCache>>> = if options.cache_auto_save {
+        let path = resolve_cache_path(options.cache_path.as_deref());
+        match path {
+            Some(p) => {
+                let mut loaded = HashCache::load(&p).unwrap_or_else(|_| HashCache::empty(p.clone()));
+                loaded.meta.scan_paths = options.paths.clone();
+                let fname = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let _ = log_tx.send(format!("캐시: {}", fname));
+                Some(Arc::new(Mutex::new(loaded)))
+            }
+            None => {
+                let _ = log_tx.send("캐시 경로 결정 실패 — 캐시 비활성".to_string());
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // 파일 분류
     let mut regular_files: Vec<PathBuf> = Vec::new();
     let mut image_files: Vec<PathBuf> = Vec::new();
@@ -75,9 +128,14 @@ pub async fn run_scan(
         let min_size_kb = options.min_size_kb;
         let check_inode = options.check_inode;
         let partial_hash_kb = options.partial_hash_kb;
-        tokio::task::spawn_blocking(move || hash::find_duplicates_opts(&files, Some(&tx), Some(&c), min_size_kb, check_inode, partial_hash_kb)).await?
+        let cache_ref = cache.clone();
+        tokio::task::spawn_blocking(move || hash::find_duplicates_opts(&files, Some(&tx), Some(&c), min_size_kb, check_inode, partial_hash_kb, cache_ref)).await?
     };
     regular.retain(|g| !is_same_zip_only_group(g));
+    // 단계 완료 flush
+    if let Some(c) = &cache {
+        if let Ok(mut guard) = c.lock() { let _ = guard.flush(); }
+    }
     let _ = log_tx.send(format!("해시 중복 그룹: {}개", regular.len()));
 
     if cancel.is_cancelled() {
@@ -92,9 +150,14 @@ pub async fn run_scan(
         let similar = options.phash_similar;
         let tx = log_tx.clone();
         let c = cancel.clone();
+        let cache_ref = cache.clone();
         let result = tokio::task::spawn_blocking(move || {
-            phash::find_similar_images(&image_files, exact, similar, Some(&tx), Some(&c))
+            phash::find_similar_images_cached(&image_files, exact, similar, Some(&tx), Some(&c), cache_ref)
         }).await?;
+        // 단계 완료 flush
+        if let Some(c) = &cache {
+            if let Ok(mut guard) = c.lock() { let _ = guard.flush(); }
+        }
         let _ = log_tx.send(format!("이미지 유사 그룹: {}개", result.len()));
         result
     } else {
@@ -114,9 +177,14 @@ pub async fn run_scan(
         let similar = options.vhash_similar;
         let tx = log_tx.clone();
         let c = cancel.clone();
+        let cache_ref = cache.clone();
         let result = tokio::task::spawn_blocking(move || {
-            vhash::find_similar_videos(&video_files, n_frames, exact, similar, Some(&tx), Some(&c))
+            vhash::find_similar_videos_cached(&video_files, n_frames, exact, similar, Some(&tx), Some(&c), cache_ref)
         }).await?;
+        // 단계 완료 flush
+        if let Some(c) = &cache {
+            if let Ok(mut guard) = c.lock() { let _ = guard.flush(); }
+        }
         let _ = log_tx.send(format!("영상 유사 그룹: {}개", result.len()));
         result
     } else {

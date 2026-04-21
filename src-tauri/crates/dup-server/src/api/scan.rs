@@ -1,6 +1,6 @@
 use axum::{extract::State, http::StatusCode, Json};
 use chrono::Local;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use dup_scanner::model::ScanOptions;
@@ -101,4 +101,73 @@ pub async fn api_scan_cancel(
     st.status = ScanStatus::Cancelled;
     st.log.push("중단됨".to_string());
     Ok(Json(serde_json::json!({"status": "cancelled"})))
+}
+
+#[derive(Deserialize)]
+pub struct PickCacheFileRequest {
+    pub mode: String, // "open" | "save"
+}
+
+pub async fn api_pick_cache_file(
+    Json(req): Json<PickCacheFileRequest>,
+) -> Json<serde_json::Value> {
+    let mode = req.mode.clone();
+    let result = tokio::task::spawn_blocking(move || pick_cache_file_blocking(&mode)).await;
+    let path = result.ok().flatten();
+
+    // 캐시 파일에서 scan_paths 읽기
+    let scan_paths: Vec<String> = path.as_deref()
+        .and_then(|p| dup_scanner::cache::HashCache::load(std::path::Path::new(p)).ok())
+        .map(|c| c.meta.scan_paths.clone())
+        .unwrap_or_default();
+
+    Json(serde_json::json!({ "path": path, "scan_paths": scan_paths }))
+}
+
+fn pick_cache_file_blocking(mode: &str) -> Option<String> {
+    let is_save = mode == "save";
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = if is_save {
+            "POSIX path of (choose file name with prompt \"캐시 파일 저장\" default name \"dup-cache.json\")".to_string()
+        } else {
+            "POSIX path of (choose file with prompt \"캐시 파일 열기\")".to_string()
+        };
+        let output = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let cmd = if is_save {
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
+             $f = New-Object System.Windows.Forms.SaveFileDialog; \
+             $f.FileName = 'dup-cache.json'; \
+             $f.Filter = 'JSON|*.json|All|*.*'; \
+             $f.ShowDialog() | Out-Null; $f.FileName"
+        } else {
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; \
+             $f = New-Object System.Windows.Forms.OpenFileDialog; \
+             $f.Filter = 'JSON|*.json|All|*.*'; \
+             $f.ShowDialog() | Out-Null; $f.FileName"
+        };
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", cmd])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output().ok()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() { return Some(path); }
+        }
+    }
+
+    None
 }

@@ -1,5 +1,7 @@
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use ffmpeg_next as ffmpeg;
+use crate::cache::{CacheEntry, HashCache};
 use crate::model::{FileEntry, Group, fmt_size};
 use crate::phash::{compute_phash_from_pixels, hamming_distance};
 use rayon::prelude::*;
@@ -247,6 +249,18 @@ pub fn find_similar_videos(
     log_tx: Option<&crate::LogSender>,
     cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> Vec<Group> {
+    find_similar_videos_cached(files, n_frames, exact_threshold, similar_threshold, log_tx, cancel, None)
+}
+
+pub fn find_similar_videos_cached(
+    files: &[std::path::PathBuf],
+    n_frames: u32,
+    exact_threshold: f32,
+    similar_threshold: f32,
+    log_tx: Option<&crate::LogSender>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
+    cache: Option<Arc<Mutex<HashCache>>>,
+) -> Vec<Group> {
     if files.is_empty() {
         return Vec::new();
     }
@@ -258,7 +272,42 @@ pub fn find_similar_videos(
         .par_iter()
         .filter_map(|p| {
             if cancel.map(|c| c.is_cancelled()).unwrap_or(false) { return None; }
-            let result = extract_frame_hashes(p, n_frames).ok().map(|h| (h, p));
+
+            let cache_key = HashCache::cache_key(p);
+
+            // 캐시 hit 확인
+            if let (Some(key), Some(c)) = (&cache_key, &cache) {
+                if let Ok(guard) = c.lock() {
+                    if let Some(entry) = guard.get(key) {
+                        if let Some(frames) = &entry.vhash_frames {
+                            if !frames.is_empty() {
+                                let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                                if let Some(tx) = log_tx {
+                                    if n % 10 == 0 || n == total {
+                                        let _ = tx.send(format!("\r영상 유사도 분석 중... ({} / {})", n, total));
+                                    }
+                                }
+                                return Some((frames.clone(), p));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let result = extract_frame_hashes(p, n_frames).ok().map(|frames| {
+                // 캐시에 저장
+                if let (Some(key), Some(c)) = (&cache_key, &cache) {
+                    if let Ok(mut guard) = c.lock() {
+                        let entry = CacheEntry {
+                            vhash_frames: Some(frames.clone()),
+                            ..Default::default()
+                        };
+                        guard.insert(key.clone(), entry);
+                        let _ = guard.flush_if_needed();
+                    }
+                }
+                (frames, p)
+            });
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             if let Some(tx) = log_tx {
                 if n % 10 == 0 || n == total {
