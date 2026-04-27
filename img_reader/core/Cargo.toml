@@ -1,0 +1,10 @@
+[package]
+name = "img_reader_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "img_reader_core"
+path = "src/lib.rs"
+
+[dependencies]
